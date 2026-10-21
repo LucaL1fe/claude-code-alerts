@@ -4,10 +4,12 @@ import SwiftUI
 /// What a session is doing, or what an alert asks of you.
 enum AState: String, Codable, CaseIterable {
     case working, input, review, done, error, idle, mac, free
+    /// The turn ended but Claude waits for background work (a shell, a subagent…) and continues by itself.
+    case background
 
     var nsColor: NSColor {
         switch self {
-        case .working: return NSColor(srgbRed: 0.30, green: 0.55, blue: 1.00, alpha: 1)
+        case .working, .background: return NSColor(srgbRed: 0.30, green: 0.55, blue: 1.00, alpha: 1)
         case .input: return NSColor(srgbRed: 1.00, green: 0.62, blue: 0.04, alpha: 1)
         case .review: return NSColor(srgbRed: 0.75, green: 0.35, blue: 0.95, alpha: 1)
         case .done, .free: return NSColor(srgbRed: 0.20, green: 0.78, blue: 0.35, alpha: 1)
@@ -21,6 +23,7 @@ enum AState: String, Codable, CaseIterable {
     var label: String {
         switch self {
         case .working: return "working"
+        case .background: return "in background"
         case .input: return "needs you"
         case .review: return "plan ready"
         case .done: return "done"
@@ -40,7 +43,7 @@ enum AState: String, Codable, CaseIterable {
         case .done: return 3
         case .mac: return 4
         case .free: return 5
-        case .working: return 6
+        case .working, .background: return 6
         case .idle: return 7
         }
     }

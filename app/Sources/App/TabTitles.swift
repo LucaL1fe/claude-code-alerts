@@ -13,6 +13,7 @@ final class TabTitles {
         case .review: return "🟣"
         case .done: return "🟢"
         case .error, .mac: return "🔴"
+        case .background: return "⏳"
         default: return nil
         }
     }

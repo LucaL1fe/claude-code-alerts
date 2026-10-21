@@ -70,6 +70,8 @@ public struct Msg: Codable {
     public var focused: Bool?
     public var flag: Bool?
     public var entrypoint: String?
+    /// Background work still running when a turn ended (Stop hook): count and a short description.
+    public var pending: Int?
     public var ok: Bool?
 
     public init(kind: String) { self.kind = kind }

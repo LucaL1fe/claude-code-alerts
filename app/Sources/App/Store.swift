@@ -272,13 +272,19 @@ final class Store: ObservableObject {
             if st == .input || st == .review {
                 alerts.removeAll { $0.sessionId == id && ($0.kind == .input || $0.kind == .review) && $0.source != "notify" }
                 if !alerts.contains(where: { $0.sessionId == id && $0.source == "notify" }) { setState(id, .working, "Working · \(tool)") }
-            } else if st == .idle || st == .working {
+            } else if st == .idle || st == .working || st == .background {
                 setState(id, .working, "Working · \(tool)")
             }
             if msg.toolName?.hasPrefix("mcp__computer-use__") == true { macUsed(id) }
         case "Stop":
             if macSessionId == id { endMac(showFree: true) }
-            raise(id, .done, msg.text?.isEmpty == false ? msg.text! : "Finished", source: event)
+            if let n = msg.pending, n > 0 {
+                // The turn ended, but Claude waits for background work and continues by itself: not done yet.
+                let what = msg.toolName.map { ": \($0)" } ?? ""
+                setState(id, .background, "Waiting for \(n) background task\(n == 1 ? "" : "s")\(what)")
+            } else {
+                raise(id, .done, msg.text?.isEmpty == false ? msg.text! : "Finished", source: event)
+            }
         case "StopFailure":
             if macSessionId == id { endMac(showFree: true) }
             raise(id, .error, msg.text ?? "Stopped with an error", source: event)

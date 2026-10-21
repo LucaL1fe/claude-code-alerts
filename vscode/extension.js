@@ -13,14 +13,14 @@ const CCA = path.join(os.homedir(), '.claude-code-alerts/bin/cca');
 const windowId = crypto.randomUUID();
 
 const COLOR = {
-  working: 'charts.blue', input: 'charts.orange', review: 'charts.purple', done: 'charts.green',
+  working: 'charts.blue', background: 'charts.blue', input: 'charts.orange', review: 'charts.purple', done: 'charts.green',
   error: 'charts.red', idle: 'disabledForeground', mac: 'charts.red', free: 'charts.green'
 };
 const LABEL = {
-  working: 'working', input: 'needs you', review: 'plan ready', done: 'done', error: 'error',
+  working: 'working', background: 'in background', input: 'needs you', review: 'plan ready', done: 'done', error: 'error',
   idle: 'idle', mac: 'using your Mac', free: 'Mac is free'
 };
-const URGENCY = { input: 0, review: 1, error: 2, done: 3, mac: 4, free: 5, working: 6, idle: 7 };
+const URGENCY = { input: 0, review: 1, error: 2, done: 3, mac: 4, free: 5, working: 6, background: 6, idle: 7 };
 
 let sock = null;
 let extUri = null;

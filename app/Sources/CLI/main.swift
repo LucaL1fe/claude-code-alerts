@@ -96,6 +96,15 @@ func runHook() {
     switch event {
     case "Stop", "SubagentStop":
         msg.text = TextUtil.firstLine(str(json["last_assistant_message"]))
+        // Work Claude waits for (it continues by itself when it finishes). Watchers and schedules do not count.
+        let work: Set<String> = ["shell", "subagent", "workflow", "teammate", "cloud session", "MCP task"]
+        let tasks = (json["background_tasks"] as? [[String: Any]] ?? []).filter {
+            work.contains(str($0["type"]) ?? "") && (str($0["status"]) ?? "running") == "running"
+        }
+        if !tasks.isEmpty {
+            msg.pending = tasks.count
+            msg.toolName = TextUtil.firstLine(str(tasks[0]["description"]) ?? str(tasks[0]["command"]) ?? str(tasks[0]["type"]), max: 80)
+        }
     case "StopFailure":
         msg.text = str(json["error_message"]) ?? str(json["error"]) ?? str(json["reason"]) ?? str(json["error_type"]) ?? "Stopped with an error"
         msg.text = TextUtil.firstLine(msg.text)

@@ -10,6 +10,20 @@ struct MakeKeyWindow: NSViewRepresentable {
     }
 }
 
+/// A session's dot: filled, or a ring while Claude waits for background work.
+struct StateDot: View {
+    let state: AState
+    var size: CGFloat = 8
+
+    var body: some View {
+        if state == .background {
+            Circle().strokeBorder(state.color, lineWidth: max(1.5, size * 0.22)).frame(width: size, height: size)
+        } else {
+            Circle().fill(state.color).frame(width: size, height: size)
+        }
+    }
+}
+
 struct IconButton: View {
     let symbol: String
     let help: String
@@ -245,7 +259,7 @@ struct SessionRow: View {
 
     var body: some View {
         HStack(spacing: 9) {
-            Circle().fill(session.state.color).frame(width: 8, height: 8)
+            StateDot(state: session.state)
             VStack(alignment: .leading, spacing: 1) {
                 NameField(session: session, fontSize: 12, context: "session")
                 Text(session.detail.isEmpty ? session.state.label : session.detail)
