@@ -1,0 +1,523 @@
+import AppKit
+import Combine
+import Shared
+
+/// A connected VS Code window and its terminals.
+struct VSWindow {
+    var conn: Conn
+    var windowId: String
+    var workspace: String?
+    var terminals: [TermInfo]
+    var focused: Bool
+}
+
+/// All state and all rules. Lives on the main thread.
+final class Store: ObservableObject {
+    static let shared = Store()
+
+    @Published private(set) var sessions: [String: Session] = [:]
+    @Published private(set) var alerts: [AlertItem] = []
+    @Published var away = false
+    @Published var summaryCount = 0
+    @Published var macSessionId: String?
+    @Published var editingSessionId: String?
+
+    var demoMode = false
+    var debugAway = false
+    var windows: [UUID: VSWindow] = [:]
+    var lastMacUse = Date.distantPast
+    private var saveWork: DispatchWorkItem?
+    private let settings = AppSettings.shared
+
+    /// Called after every change so overlays, menu bar and VS Code follow.
+    var onChange: (() -> Void)?
+    var onFlare: ((AState) -> Void)?
+
+    private var stateURL: URL { CCA.supportDir.appendingPathComponent("state.json") }
+
+    // MARK: - Derived
+
+    /// Alerts that ask for you, most urgent first (not muted).
+    var waiting: [AlertItem] {
+        alerts.filter { $0.status != .muted }.sorted(by: Self.order)
+    }
+
+    var muted: [AlertItem] { alerts.filter { $0.status == .muted }.sorted(by: Self.order) }
+
+    /// Pills on screen right now.
+    var pills: [AlertItem] {
+        alerts.filter { $0.status == .active && !$0.queued }.sorted(by: Self.order)
+    }
+
+    var mostUrgent: AState? { waiting.first?.kind }
+
+    static func order(_ a: AlertItem, _ b: AlertItem) -> Bool {
+        a.kind.urgency != b.kind.urgency ? a.kind.urgency < b.kind.urgency : a.created > b.created
+    }
+
+    func session(_ id: String) -> Session? { sessions[id] }
+
+    var sortedSessions: [Session] {
+        sessions.values.sorted { a, b in
+            a.state.urgency != b.state.urgency ? a.state.urgency < b.state.urgency : a.updated > b.updated
+        }
+    }
+
+    // MARK: - Persistence
+
+    struct Saved: Codable {
+        var sessions: [String: Session]
+        var alerts: [AlertItem]
+    }
+
+    func load() {
+        guard let data = try? Data(contentsOf: stateURL), let saved = try? JSONDecoder().decode(Saved.self, from: data) else { return }
+        // Sessions whose Claude process is gone are dropped, with their alerts (debug sessions stay).
+        sessions = saved.sessions.filter { $0.key.hasPrefix("debug-") || Proc.isAlive($0.value.claudePid) }
+        alerts = saved.alerts.filter { sessions[$0.sessionId] != nil && $0.kind != .mac && $0.kind != .free }
+        for i in alerts.indices { alerts[i].queued = false }
+    }
+
+    private func save() {
+        saveWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            let saved = Saved(sessions: self.sessions, alerts: self.alerts.filter { $0.kind != .mac && $0.kind != .free })
+            if let data = try? JSONEncoder().encode(saved) { try? data.write(to: self.stateURL, options: .atomic) }
+        }
+        saveWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: work)
+    }
+
+    private func changed() {
+        save()
+        onChange?()
+    }
+
+    // MARK: - Messages
+
+    func handle(_ msg: Msg, _ conn: Conn) {
+        switch msg.kind {
+        case "hook": handleHook(msg, conn)
+        case "notify": handleNotify(msg)
+        case "rename":
+            let id = sessionId(for: msg)
+            var reply = Msg(kind: "ok")
+            reply.ok = id != nil
+            if let id, let name = msg.name { rename(id, to: name) }
+            conn.send(reply)
+        case "mac": handleMac(msg)
+        case "status":
+            var reply = Msg(kind: "status")
+            reply.sessions = sessionInfos()
+            reply.text = windows.values.map { w in
+                "\((w.workspace as NSString?)?.lastPathComponent ?? "untitled") (\(w.terminals.count) terminals\(w.focused ? ", focused" : ""))"
+            }.joined(separator: ", ")
+            reply.flag = away
+            conn.send(reply)
+        case "settings": Actions.shared.openSettings()
+        case "vscodeHello", "vscodeState": handleVSCode(msg, conn)
+        case "goto":
+            if let pid = msg.shellPid, let s = sessions.values.first(where: { $0.shellPid == pid }) { goTo(s.id) }
+        case "debug": handleDebug(msg)
+        default: break
+        }
+    }
+
+    func disconnected(_ conn: Conn) {
+        if windows.removeValue(forKey: conn.id) != nil { changed() }
+    }
+
+    private func isDemoSession(_ msg: Msg) -> Bool {
+        (msg.cwd ?? "").contains("claude-code-alerts-demo")
+    }
+
+    /// Registers or refreshes the session behind a message.
+    @discardableResult
+    private func upsert(_ msg: Msg) -> String? {
+        let id = msg.sessionId ?? sessionId(for: msg) ?? msg.claudePid.map { "pid-\($0)" }
+        guard let id else { return nil }
+        var s = sessions[id] ?? Session(id: id, autoName: "", customName: nil, claudePid: msg.claudePid ?? 0,
+                                        shellPid: msg.shellPid ?? 0, tty: msg.tty, cwd: msg.cwd ?? "",
+                                        transcript: msg.transcript, state: .idle, detail: "", updated: Date())
+        if let n = msg.name, !n.isEmpty {
+            s.autoName = Self.cleanName(n)
+        } else if let tn = terminalName(for: msg.shellPid ?? s.shellPid) {
+            s.autoName = tn
+        }
+        if s.autoName.isEmpty { s.autoName = ((msg.cwd ?? s.cwd) as NSString).lastPathComponent }
+        if let p = msg.claudePid, p > 0 { s.claudePid = p }
+        if let p = msg.shellPid, p > 0 { s.shellPid = p }
+        if let t = msg.tty { s.tty = t }
+        if let c = msg.cwd, !c.isEmpty { s.cwd = c }
+        if let t = msg.transcript { s.transcript = t }
+        sessions[id] = s
+        return id
+    }
+
+    /// Strips status glyphs Claude puts in front of titles ("✳ name", spinner characters).
+    static func cleanName(_ raw: String) -> String {
+        var name = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        while let first = name.unicodeScalars.first, !CharacterSet.alphanumerics.contains(first) {
+            name.removeFirst()
+            name = name.trimmingCharacters(in: .whitespaces)
+        }
+        return name
+    }
+
+    /// The VS Code tab name of a terminal, unless it is just a shell or version name.
+    func terminalName(for shellPid: Int32) -> String? {
+        guard shellPid > 0, let t = windowOwning(shellPid)?.terminals.first(where: { $0.pid == shellPid }) else { return nil }
+        let name = Self.cleanName(t.name)
+        let generic: Set<String> = ["zsh", "bash", "fish", "sh", "node", "claude", "terminal", "login"]
+        if name.isEmpty || generic.contains(name.lowercased()) { return nil }
+        if name.range(of: #"^\d+\.\d+\.\d+"#, options: .regularExpression) != nil { return nil }
+        return name
+    }
+
+    /// Finds the session of a CLI call by its Claude process.
+    func sessionId(for msg: Msg) -> String? {
+        if let id = msg.sessionId, sessions[id] != nil { return id }
+        if let pid = msg.claudePid, let s = sessions.values.first(where: { $0.claudePid == pid }) { return s.id }
+        if let pid = msg.shellPid, pid > 0, let s = sessions.values.first(where: { $0.shellPid == pid }) { return s.id }
+        return nil
+    }
+
+    private func setState(_ id: String, _ state: AState, _ detail: String? = nil) {
+        guard var s = sessions[id] else { return }
+        s.state = state
+        if let detail, !detail.isEmpty { s.detail = detail }
+        s.updated = Date()
+        sessions[id] = s
+    }
+
+    private func handleHook(_ msg: Msg, _ conn: Conn) {
+        if demoMode && !isDemoSession(msg) { return }
+        guard let event = msg.event, let id = upsert(msg) else { return }
+        switch event {
+        case "SessionStart":
+            setState(id, .idle)
+            var reply = Msg(kind: "ok")
+            reply.name = sessions[id]?.customName
+            conn.send(reply)
+        case "UserPromptSubmit":
+            // You are at this session: its reminders are answered.
+            alerts.removeAll { $0.sessionId == id }
+            setState(id, .working, "Working")
+        case "PostToolUse":
+            let tool = msg.toolName.map { $0.hasPrefix("mcp__") ? String($0.split(separator: "_").last ?? "") : $0 } ?? ""
+            let st = sessions[id]?.state
+            if st == .input || st == .review {
+                alerts.removeAll { $0.sessionId == id && ($0.kind == .input || $0.kind == .review) }
+                setState(id, .working, "Working · \(tool)")
+            } else if st == .idle || st == .working {
+                setState(id, .working, "Working · \(tool)")
+            }
+            if msg.toolName?.hasPrefix("mcp__computer-use__") == true { macUsed(id) }
+        case "Stop":
+            if macSessionId == id { endMac(showFree: true) }
+            raise(id, .done, msg.text?.isEmpty == false ? msg.text! : "Finished")
+        case "StopFailure":
+            if macSessionId == id { endMac(showFree: true) }
+            raise(id, .error, msg.text ?? "Stopped with an error")
+        case "Notification":
+            let type = msg.notificationType ?? ""
+            if ["permission_prompt", "elicitation_dialog", "agent_needs_input", "elicitation_url_dialog"].contains(type) {
+                raise(id, .input, msg.text ?? "Claude needs you")
+            }
+        case "PermissionRequest":
+            raise(id, .input, msg.text ?? "Claude asks for permission")
+        case "PreToolUse":
+            let tool = msg.toolName ?? ""
+            if tool == "ExitPlanMode" {
+                raise(id, .review, msg.text?.isEmpty == false ? "Plan ready · " + msg.text! : "Plan ready to review")
+            } else if tool == "AskUserQuestion" {
+                raise(id, .input, msg.text ?? "Claude has a question")
+            } else if tool.hasPrefix("mcp__computer-use__") {
+                startMac(id, what: "Using your Mac")
+            }
+        case "SessionEnd":
+            if macSessionId == id { endMac(showFree: false) }
+            alerts.removeAll { $0.sessionId == id }
+            sessions.removeValue(forKey: id)
+        default:
+            break
+        }
+        changed()
+    }
+
+    private func handleNotify(_ msg: Msg) {
+        if demoMode && !isDemoSession(msg) { return }
+        guard let id = upsert(msg) else { return }
+        let kind = AState(rawValue: msg.state ?? "input") ?? .input
+        raise(id, kind, msg.text ?? "Claude needs you")
+        changed()
+    }
+
+    private func handleMac(_ msg: Msg) {
+        if demoMode && !isDemoSession(msg) { return }
+        guard let id = upsert(msg) else { return }
+        if msg.flag == false {
+            if macSessionId == id || macSessionId == nil { endMac(showFree: true) }
+        } else {
+            startMac(id, what: msg.text?.isEmpty == false ? msg.text! : "Using your Mac")
+        }
+        changed()
+    }
+
+    // MARK: - Rules
+
+    /// Creates an alert unless you are already looking at that session.
+    func raise(_ id: String, _ kind: AState, _ text: String) {
+        setState(id, kind, text)
+        guard let s = sessions[id] else { return }
+        if isLookingAt(s) { return }
+        // One alert per session: the newest replaces an older one of the same session.
+        alerts.removeAll { $0.sessionId == id && $0.kind != .mac }
+        var alert = AlertItem(sessionId: id, kind: kind, text: text)
+        alert.queued = away
+        alerts.append(alert)
+        if !away { announce(kind, s) }
+    }
+
+    /// Flare, sound, voice for something new on screen.
+    /// No flare while a session drives the Mac: the flare windows would sit where Claude wants to click.
+    func announce(_ kind: AState, _ s: Session?) {
+        if macSessionId == nil && kind != .mac { onFlare?(kind) }
+        Actions.shared.sound(kind)
+        if let s { Actions.shared.speak("\(s.name), \(kind.label)") }
+    }
+
+    /// True when that session's terminal is the active tab of the focused VS Code window and VS Code is in front.
+    func isLookingAt(_ s: Session) -> Bool {
+        guard NSWorkspace.shared.frontmostApplication?.bundleIdentifier == "com.microsoft.VSCode", !away else { return false }
+        return windows.values.contains { w in w.focused && w.terminals.contains { $0.pid == s.shellPid && $0.active } }
+    }
+
+    // MARK: - Your actions
+
+    func quiet(_ alertId: UUID) {
+        guard let i = alerts.firstIndex(where: { $0.id == alertId }) else { return }
+        if alerts[i].kind == .mac || alerts[i].kind == .free { alerts.remove(at: i) } else { alerts[i].status = .muted }
+        changed()
+    }
+
+    func later(_ alertId: UUID) {
+        guard let i = alerts.firstIndex(where: { $0.id == alertId }) else { return }
+        alerts[i].status = .snoozed
+        alerts[i].snoozeUntil = Date().addingTimeInterval(TimeInterval(settings.laterMinutes * 60))
+        changed()
+    }
+
+    func done(_ alertId: UUID) {
+        guard let i = alerts.firstIndex(where: { $0.id == alertId }) else { return }
+        let a = alerts.remove(at: i)
+        if a.kind == .done || a.kind == .error { setState(a.sessionId, .idle) }
+        changed()
+    }
+
+    func goTo(alert alertId: UUID) {
+        guard let a = alerts.first(where: { $0.id == alertId }) else { return }
+        goTo(a.sessionId)
+    }
+
+    func goTo(_ sessionId: String) {
+        markSeen(sessionId)
+        if let s = sessions[sessionId] { Actions.shared.goTo(s, owner: windowOwning(s.shellPid)) }
+        changed()
+    }
+
+    func muteAll() {
+        for i in alerts.indices where alerts[i].kind != .mac { alerts[i].status = .muted }
+        changed()
+    }
+
+    func rename(_ sessionId: String, to name: String) {
+        let clean = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard var s = sessions[sessionId], !clean.isEmpty else { return }
+        s.customName = clean
+        sessions[sessionId] = s
+        if let owner = windowOwning(s.shellPid) {
+            var m = Msg(kind: "renameTerminal")
+            m.shellPid = s.shellPid
+            m.name = clean
+            owner.conn.send(m)
+        }
+        changed()
+    }
+
+    /// You looked at the session: its reminders go away, a finished session becomes idle.
+    func markSeen(_ sessionId: String) {
+        let before = alerts.count
+        alerts.removeAll { $0.sessionId == sessionId && $0.kind != .mac }
+        if let s = sessions[sessionId], s.state == .done || s.state == .error { setState(sessionId, .idle) }
+        if alerts.count != before { save() }
+    }
+
+    // MARK: - Computer use
+
+    func startMac(_ id: String, what: String) {
+        guard settings.macRing else { return }
+        lastMacUse = Date()
+        guard macSessionId != id else { return }
+        if macSessionId != nil { endMac(showFree: false) }
+        macSessionId = id
+        setState(id, .mac, what)
+        alerts.removeAll { $0.kind == .mac || $0.kind == .free }
+        alerts.append(AlertItem(sessionId: id, kind: .mac, text: what))
+        announce(.mac, sessions[id])
+        let alertId = alerts.last!.id
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
+            self?.alerts.removeAll { $0.id == alertId }
+            self?.onChange?()
+        }
+    }
+
+    func macUsed(_ id: String) {
+        if macSessionId == id { lastMacUse = Date() }
+    }
+
+    func endMac(showFree: Bool) {
+        guard let id = macSessionId else { return }
+        macSessionId = nil
+        alerts.removeAll { $0.kind == .mac }
+        if sessions[id]?.state == .mac { setState(id, .working, "Working") }
+        if showFree {
+            let free = AlertItem(sessionId: id, kind: .free, text: "You can use your Mac again")
+            alerts.append(free)
+            announce(.free, nil)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
+                self?.alerts.removeAll { $0.id == free.id }
+                self?.onChange?()
+            }
+        }
+        changed()
+    }
+
+    // MARK: - Timers (called every second)
+
+    func tick() {
+        var dirty = false
+        let now = Date()
+        for i in alerts.indices where alerts[i].status == .snoozed {
+            if let until = alerts[i].snoozeUntil, until <= now {
+                alerts[i].status = .active
+                alerts[i].snoozeUntil = nil
+                dirty = true
+                if !away { Actions.shared.sound(alerts[i].kind) }
+            }
+        }
+        if macSessionId != nil, now.timeIntervalSince(lastMacUse) > 60 { endMac(showFree: true); dirty = true }
+        // Drop sessions whose Claude process ended without SessionEnd.
+        for (id, s) in sessions where !id.hasPrefix("debug-") && s.claudePid > 0 && !Proc.isAlive(s.claudePid) {
+            sessions.removeValue(forKey: id)
+            alerts.removeAll { $0.sessionId == id }
+            dirty = true
+        }
+        if dirty { changed() }
+    }
+
+    // MARK: - Away
+
+    func setAway(_ value: Bool) {
+        guard value != away else { return }
+        away = value
+        if !value {
+            let queued = alerts.filter { $0.queued }
+            for i in alerts.indices { alerts[i].queued = false }
+            if !queued.isEmpty {
+                summaryCount = queued.count
+                let top = queued.sorted(by: Self.order).first!.kind
+                onFlare?(top)
+                Actions.shared.sound(top)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 20) { [weak self] in
+                    self?.summaryCount = 0
+                    self?.onChange?()
+                }
+            }
+        }
+        changed()
+    }
+
+    // MARK: - VS Code
+
+    private func handleVSCode(_ msg: Msg, _ conn: Conn) {
+        var w = windows[conn.id] ?? VSWindow(conn: conn, windowId: msg.windowId ?? conn.id.uuidString, workspace: nil, terminals: [], focused: false)
+        if let ws = msg.workspace { w.workspace = ws }
+        if let t = msg.terminals { w.terminals = t }
+        if let f = msg.focused { w.focused = f }
+        windows[conn.id] = w
+        if msg.kind == "vscodeHello" { conn.send(sessionsMessage()) }
+        // Seen: the focused window's active terminal.
+        if w.focused, let active = w.terminals.first(where: { $0.active }),
+           let s = sessions.values.first(where: { $0.shellPid == active.pid }),
+           NSWorkspace.shared.frontmostApplication?.bundleIdentifier == "com.microsoft.VSCode" {
+            if alerts.contains(where: { $0.sessionId == s.id && $0.kind != .mac && $0.status == .active }) {
+                markSeen(s.id)
+                changed()
+            }
+        }
+    }
+
+    func windowOwning(_ shellPid: Int32) -> VSWindow? {
+        windows.values.first { $0.terminals.contains { $0.pid == shellPid } }
+    }
+
+    func sessionInfos() -> [SessionInfo] {
+        sortedSessions.map {
+            SessionInfo(id: $0.id, name: $0.name, state: $0.state.rawValue, detail: $0.detail, shellPid: $0.shellPid,
+                        updated: $0.updated.timeIntervalSince1970)
+        }
+    }
+
+    func sessionsMessage() -> Msg {
+        var m = Msg(kind: "sessions")
+        m.sessions = sessionInfos()
+        return m
+    }
+
+    func broadcastSessions() {
+        let m = sessionsMessage()
+        for w in windows.values { w.conn.send(m) }
+    }
+
+    // MARK: - Debug
+
+    private func handleDebug(_ msg: Msg) {
+        switch msg.event {
+        case "event":
+            let id = msg.sessionId ?? "debug-demo"
+            var m = msg
+            m.sessionId = id
+            m.claudePid = 0
+            upsert(m)
+            if var s = sessions[id], let n = msg.name { s.autoName = n; sessions[id] = s }
+            let kind = AState(rawValue: msg.state ?? "done") ?? .done
+            switch kind {
+            case .working, .idle:
+                setState(id, kind, msg.text)
+            case .mac:
+                startMac(id, what: msg.text?.isEmpty == false ? msg.text! : "Using your Mac")
+            case .free:
+                macSessionId = id
+                endMac(showFree: true)
+            default:
+                raise(id, kind, msg.text?.isEmpty == false ? msg.text! : kind.label)
+            }
+        case "away":
+            debugAway = msg.flag ?? false
+            setAway(debugAway)
+        case "demo":
+            demoMode = msg.flag ?? false
+        case "clear":
+            alerts.removeAll()
+            sessions = sessions.filter { !$0.key.hasPrefix("debug-") }
+            summaryCount = 0
+        case "endsession":
+            if let id = msg.sessionId { sessions.removeValue(forKey: id); alerts.removeAll { $0.sessionId == id } }
+        default:
+            break
+        }
+        changed()
+    }
+}

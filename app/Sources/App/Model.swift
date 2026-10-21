@@ -1,0 +1,123 @@
+import AppKit
+import SwiftUI
+
+/// What a session is doing, or what an alert asks of you.
+enum AState: String, Codable, CaseIterable {
+    case working, input, review, done, error, idle, mac, free
+
+    var nsColor: NSColor {
+        switch self {
+        case .working: return NSColor(srgbRed: 0.30, green: 0.55, blue: 1.00, alpha: 1)
+        case .input: return NSColor(srgbRed: 1.00, green: 0.62, blue: 0.04, alpha: 1)
+        case .review: return NSColor(srgbRed: 0.75, green: 0.35, blue: 0.95, alpha: 1)
+        case .done, .free: return NSColor(srgbRed: 0.20, green: 0.78, blue: 0.35, alpha: 1)
+        case .error, .mac: return NSColor(srgbRed: 1.00, green: 0.27, blue: 0.23, alpha: 1)
+        case .idle: return NSColor(srgbRed: 0.54, green: 0.56, blue: 0.60, alpha: 1)
+        }
+    }
+
+    var color: Color { Color(nsColor: nsColor) }
+
+    var label: String {
+        switch self {
+        case .working: return "working"
+        case .input: return "needs you"
+        case .review: return "plan ready"
+        case .done: return "done"
+        case .error: return "error"
+        case .idle: return "idle"
+        case .mac: return "using your Mac"
+        case .free: return "Mac is free"
+        }
+    }
+
+    /// Lower = more urgent.
+    var urgency: Int {
+        switch self {
+        case .input: return 0
+        case .review: return 1
+        case .error: return 2
+        case .done: return 3
+        case .mac: return 4
+        case .free: return 5
+        case .working: return 6
+        case .idle: return 7
+        }
+    }
+
+    var soundName: String {
+        switch self {
+        case .input: return "Ping"
+        case .review: return "Purr"
+        case .error: return "Basso"
+        case .mac: return "Tink"
+        case .free: return "Hero"
+        default: return "Glass"
+        }
+    }
+}
+
+struct Session: Codable, Identifiable, Equatable {
+    var id: String
+    var autoName: String
+    var customName: String?
+    var claudePid: Int32
+    var shellPid: Int32
+    var tty: String?
+    var cwd: String
+    var transcript: String?
+    var state: AState
+    var detail: String
+    var updated: Date
+
+    var name: String { customName ?? autoName }
+}
+
+enum AlertStatus: String, Codable {
+    case active, snoozed, muted
+}
+
+struct AlertItem: Codable, Identifiable, Equatable {
+    var id = UUID()
+    var sessionId: String
+    var kind: AState
+    var text: String
+    var created = Date()
+    var status: AlertStatus = .active
+    var snoozeUntil: Date?
+    /// Arrived while you were away: no pill or sound until you are back.
+    var queued = false
+}
+
+/// User settings (UserDefaults).
+final class AppSettings: ObservableObject {
+    static let shared = AppSettings()
+    private let d = UserDefaults.standard
+
+    @Published var laterMinutes: Int { didSet { d.set(laterMinutes, forKey: "laterMinutes") } }
+    @Published var sound: Bool { didSet { d.set(sound, forKey: "sound") } }
+    @Published var voice: Bool { didSet { d.set(voice, forKey: "voice") } }
+    @Published var macRing: Bool { didSet { d.set(macRing, forKey: "macRing") } }
+    @Published var notchBand: Bool { didSet { d.set(notchBand, forKey: "notchBand") } }
+    @Published var awayMinutes: Int { didSet { d.set(awayMinutes, forKey: "awayMinutes") } }
+
+    private init() {
+        d.register(defaults: ["laterMinutes": 5, "sound": true, "voice": false, "macRing": true, "notchBand": true, "awayMinutes": 3])
+        laterMinutes = d.integer(forKey: "laterMinutes")
+        sound = d.bool(forKey: "sound")
+        voice = d.bool(forKey: "voice")
+        macRing = d.bool(forKey: "macRing")
+        notchBand = d.bool(forKey: "notchBand")
+        awayMinutes = d.integer(forKey: "awayMinutes")
+    }
+}
+
+extension Date {
+    var ago: String {
+        let s = max(0, Int(Date().timeIntervalSince(self)))
+        if s < 60 { return "now" }
+        if s < 3600 { return "\(s / 60) min" }
+        if s < 86400 { return "\(s / 3600) h" }
+        return "\(s / 86400) d"
+    }
+}

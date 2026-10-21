@@ -1,0 +1,9 @@
+build/
+app/.build/
+app/.swiftpm/
+*.vsix
+.DS_Store
+node_modules/
+scripts/demo/out/
+.demo/
+.dev-notes.md

@@ -1,0 +1,14 @@
+{
+  "description": "Claude Code Alerts: forwards session events to the menu bar app",
+  "hooks": {
+    "SessionStart": [{ "hooks": [{ "type": "command", "command": "\"$HOME/.claude-code-alerts/bin/cca\" hook", "timeout": 5 }] }],
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "\"$HOME/.claude-code-alerts/bin/cca\" hook", "async": true }] }],
+    "Stop": [{ "hooks": [{ "type": "command", "command": "\"$HOME/.claude-code-alerts/bin/cca\" hook", "async": true }] }],
+    "StopFailure": [{ "hooks": [{ "type": "command", "command": "\"$HOME/.claude-code-alerts/bin/cca\" hook", "async": true }] }],
+    "Notification": [{ "hooks": [{ "type": "command", "command": "\"$HOME/.claude-code-alerts/bin/cca\" hook", "async": true }] }],
+    "PermissionRequest": [{ "hooks": [{ "type": "command", "command": "\"$HOME/.claude-code-alerts/bin/cca\" hook", "async": true }] }],
+    "PreToolUse": [{ "matcher": "ExitPlanMode|AskUserQuestion|mcp__computer-use__.*", "hooks": [{ "type": "command", "command": "\"$HOME/.claude-code-alerts/bin/cca\" hook", "async": true }] }],
+    "PostToolUse": [{ "matcher": "*", "hooks": [{ "type": "command", "command": "\"$HOME/.claude-code-alerts/bin/cca\" hook", "async": true }] }],
+    "SessionEnd": [{ "hooks": [{ "type": "command", "command": "\"$HOME/.claude-code-alerts/bin/cca\" hook", "async": true }] }]
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "name": "claude-code-alerts",
+  "owner": { "name": "LucaL1fe" },
+  "plugins": [
+    {
+      "name": "claude-code-alerts",
+      "source": "./plugin",
+      "description": "Mac alerts for Claude Code: hooks + skill for the Claude Code Alerts menu bar app."
+    }
+  ]
+}

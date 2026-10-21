@@ -1,0 +1,82 @@
+{
+  "name": "claude-code-alerts",
+  "displayName": "Claude Code Alerts: notifications for Claude Code terminals",
+  "description": "Know which Claude Code session is done or needs you, and jump to the exact VS Code terminal tab. Companion of the Claude Code Alerts Mac app.",
+  "version": "0.1.0",
+  "publisher": "lucal1fe",
+  "license": "MIT",
+  "icon": "media/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/LucaL1fe/claude-code-alerts"
+  },
+  "homepage": "https://github.com/LucaL1fe/claude-code-alerts",
+  "bugs": {
+    "url": "https://github.com/LucaL1fe/claude-code-alerts/issues"
+  },
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "claude",
+    "claude code",
+    "notifications",
+    "alerts",
+    "terminal",
+    "ai agent",
+    "macos",
+    "menu bar",
+    "anthropic"
+  ],
+  "extensionKind": [
+    "ui"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "views": {
+      "explorer": [
+        {
+          "id": "claudeCodeAlerts.sessions",
+          "name": "Claude Sessions"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "claudeCodeAlerts.goto",
+        "title": "Claude Code Alerts: Go to session"
+      },
+      {
+        "command": "claudeCodeAlerts.settings",
+        "title": "Claude Code Alerts: Open settings"
+      }
+    ],
+    "configuration": {
+      "title": "Claude Code Alerts",
+      "properties": {
+        "claudeCodeAlerts.devTerminals": {
+          "type": "boolean",
+          "default": false,
+          "scope": "resource",
+          "description": "Development only: allow the app's demo scripts to open terminals in this workspace."
+        }
+      }
+    }
+  },
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "Works in Restricted Mode; demo terminals are off there.",
+      "restrictedConfigurations": [
+        "claudeCodeAlerts.devTerminals"
+      ]
+    },
+    "virtualWorkspaces": true
+  }
+}
