@@ -225,73 +225,102 @@ function caption(t, caps) {
 
 // whole desktop view and the pill area, in stage coordinates
 const FULL = { x: 800, y: 500, z: 0.8 };
-const PILL = { x: 800, y: 110, z: 1.65 };
+const PILL = { x: 800, y: 140, z: 1.45 };
 
 // ---------- clips ----------
 const CLIPS = {
   hero: {
-    duration: 7.6,
+    duration: 7.4,
     build() {
       menubar('Chrome');
       browser();
-      vscode(
-        [{ title: '✳ landing-page' }, { title: '✳ checkout-refactor' }, { title: '✳ payments' }],
-        [{ name: 'checkout-refactor', state: 'idle', label: 'idle · now' }, { name: 'landing-page', state: 'working' }, { name: 'payments', state: 'working' }],
-        `<div class="c1">✻ Claude Code</div><div class="c3">&gt; make total() reject bad input and add tests</div><br>
-         <div class="c2">● Update(src/cart.js)</div><div class="c3">  ⎿ Added 6 lines</div><div class="c2">● Bash(node --test)</div>
-         <div class="ok">  ⎿ ✓ 3 tests pass</div><br><div>Validation added, all 3 tests pass.</div><div class="prompt">&gt; <span class="caret"></span></div>`);
+      vscode([], [], '');
+      // lower, so the tab strip stays visible under the pills that are still waiting
+      $('#vscode').style.top = '230px';
+      $('#vscode').style.height = '740px';
       overlays();
     },
     render(t) {
-      const sw = 3.75; // the click on →
-      $('#browser').style.opacity = 1 - eprog(t, sw + 0.05, sw + 0.4);
-      $('#vscode').style.opacity = eprog(t, sw + 0.05, sw + 0.4);
+      const clickAt = 4.2;
+      const sw = clickAt + 0.1;
+      $('#browser').style.opacity = 1 - eprog(t, sw, sw + 0.35);
+      $('#vscode').style.opacity = eprog(t, sw, sw + 0.35);
       menubarApp(t < sw + 0.2 ? 'Chrome' : 'Code');
-      setIcon(t >= 1.0 && t < sw ? 'done' : null, t >= 1.0 && t < sw ? 1 : 0);
-      renderPills(t, [{ state: 'done', name: 'checkout-refactor', text: 'Validation added · all 3 tests pass', at: 1.0, out: sw + 0.05 }]);
+      const pills = [
+        { state: 'done', name: 'checkout-refactor', text: 'Validation added · all 3 tests pass', at: 0.3 },
+        { state: 'review', name: 'landing-page', text: 'Plan ready · pricing section in 3 steps', at: 0.9 },
+        { state: 'input', name: 'payments', text: 'Allow Bash: npm run migrate', at: 1.5, out: clickAt + 0.05 },
+      ].filter((p) => t >= p.at).sort((a, b) => order(a.state) - order(b.state));
+      renderPills(t, pills);
       edge(t, []);
-      const sp = spinner(t);
+      const waiting = pills.filter((p) => p.out === undefined || t < p.out).length;
+      setIcon(waiting ? pills[0].state : null, waiting);
+      const onPay = t >= sw;
+      const pop = onPay && t < sw + 0.9 ? `box-shadow: inset 0 0 0 2px #FF9F0A; background:#2f2a22` : '';
       setTabs([
-        { title: `${sp} landing-page` },
-        { title: t < sw + 0.3 ? '🟢 checkout-refactor' : '✳ checkout-refactor', on: t >= sw + 0.3 },
-        { title: `${sp} payments` },
+        { title: '🟢 checkout-refactor', on: !onPay },
+        { title: '🟣 landing-page' },
+        { title: '🟠 payments', on: onPay, style: pop },
+        { title: '✳ docs-update' },
       ]);
-      camera(t, [[0, FULL], [1.35, FULL], [2.3, PILL], [3.2, { x: 860, y: 112, z: 1.7 }], [3.8, { x: 860, y: 112, z: 1.7 }], [4.6, FULL], [5.6, FULL], [6.5, { x: 640, y: 160, z: 1.7 }], [7.6, { x: 640, y: 160, z: 1.7 }]]);
-      cursor(t, [[0, { x: 900, y: 720 }], [2.4, { x: 940, y: 520 }], [3.55, { sel: '#pills .b.go', x: 1037, y: 100 }], [4.4, { sel: '#pills .b.go', x: 1037, y: 100 }], [6.4, { sel: '.vtab:nth-child(2)', x: 560, y: 150 }]], [sw]);
-      caption(t, [{ at: 0.1, to: 2.2, text: 'Four Claude sessions are working. You are writing the spec.' }, { at: 2.2, to: 4.3, text: 'One finishes, and you know it right away.' }, { at: 4.6, to: 7.6, text: 'One click: the exact terminal tab.' }]);
+      setSessions([
+        { name: 'payments', state: 'input', on: onPay },
+        { name: 'landing-page', state: 'review' },
+        { name: 'checkout-refactor', state: 'done' },
+        { name: 'docs-update', state: 'idle' },
+      ]);
+      $('#term').innerHTML = `<div class="c1">✻ Claude Code</div><div class="c3">&gt; migrate the plans table</div><br><div class="c2">● Bash(npm run migrate)</div>
+        <div style="margin-top:14px;border:1px solid #FF9F0A;border-radius:8px;padding:12px 14px;color:#fff">Allow Claude to run <b>npm run migrate</b>?<br>
+        <span style="color:#FF9F0A">❯ 1. Yes</span><br>  2. No, tell Claude what to do</div>`;
+      camera(t, [[0, FULL], [1.9, FULL], [2.7, { x: 800, y: 150, z: 1.45 }], [4.35, { x: 800, y: 150, z: 1.45 }], [5.1, { x: 780, y: 360, z: 1.15 }], [7.4, { x: 780, y: 360, z: 1.15 }]]);
+      cursor(t, [[0, { x: 900, y: 720 }], [2.8, { x: 940, y: 520 }], [4.0, { sel: '#pills .pill .b.go', x: 1037, y: 100 }], [4.6, { sel: '#pills .pill .b.go', x: 1037, y: 100 }], [6.4, { x: 880, y: 470 }]], [clickAt]);
+      caption(t, [{ at: 0.2, to: 2.6, text: 'Three sessions want you. Most urgent first.' }, { at: 2.7, to: 4.3, text: 'Go to the one that needs you.' }, { at: 4.6, to: 7.4, text: 'You land on its exact terminal tab.' }]);
     },
   },
 
-  several: {
-    duration: 7.2,
-    build() { menubar('Chrome'); browser(); overlays(); add(stage, listHTML()); },
+  menubar: {
+    duration: 6.4,
+    build() {
+      menubar('Chrome');
+      browser();
+      vscode([], [], '');
+      overlays();
+      add(stage, listHTML());
+    },
     render(t) {
-      menubarApp('Chrome');
-      const listAt = 3.55;
-      const pills = [
-        { state: 'done', name: 'checkout-refactor', text: 'Validation added · all 3 tests pass', at: 0.5 },
-        { state: 'review', name: 'landing-page', text: 'Plan ready · pricing section in 3 steps', at: 1.05 },
-        { state: 'input', name: 'payments', text: 'Allow Bash: npm run migrate', at: 1.6 },
-      ];
-      const shown = pills.filter((p) => t >= p.at).sort((a, b) => order(a.state) - order(b.state));
-      renderPills(t < listAt ? t : -1, shown);
+      const iconAt = 0.95, rowAt = 2.3, goAt = 3.7;
+      const sw = goAt + 0.1;
+      $('#browser').style.opacity = 1 - eprog(t, sw, sw + 0.35);
+      $('#vscode').style.opacity = eprog(t, sw, sw + 0.35);
+      menubarApp(t < sw + 0.2 ? 'Chrome' : 'Code');
+      setIcon(t < goAt ? 'input' : 'review', t < goAt ? 3 : 2);
+      renderPills(-1, []);
       edge(t, []);
-      const n = shown.length;
-      setIcon(n ? shown[0].state : null, n);
-      const lk = spring(prog(t, listAt, listAt + 0.5));
       const L = $('#list');
-      L.style.opacity = t >= listAt ? clamp(lk * 1.4) : 0;
+      const lk = spring(prog(t, iconAt + 0.05, iconAt + 0.55));
+      const closing = 1 - eprog(t, goAt + 0.05, goAt + 0.3);
+      L.style.opacity = t >= iconAt ? clamp(lk * 1.4) * closing : 0;
       L.style.transform = `scale(${0.94 + 0.06 * lk})`;
-      // the first row opens like a pill
-      const openK = eprog(t, 4.9, 5.3);
+      const openK = eprog(t, rowAt, rowAt + 0.35);
       $('#row0').style.borderColor = `rgba(255,159,10,${openK})`;
       $('#row0').style.background = `rgba(${Math.round(lerp(40, 5, openK))},${Math.round(lerp(40, 5, openK))},${Math.round(lerp(44, 6, openK))},1)`;
       $('#row0 .a').style.display = openK > 0.5 ? 'none' : '';
       $('#row0 .btns').style.display = openK > 0.5 ? 'flex' : 'none';
       $('#row0 .more').style.maxHeight = openK * 20 + 'px';
-      camera(t, [[0, FULL], [1.9, FULL], [2.6, PILL], [3.3, { x: 1190, y: 60, z: 1.55 }], [4.3, { x: 1260, y: 200, z: 1.45 }], [7.2, { x: 1290, y: 210, z: 1.5 }]]);
-      cursor(t, [[0, { x: 760, y: 760 }], [2.7, { x: 1000, y: 420 }], [3.4, { sel: '#mbicon', x: 1110, y: 17 }], [4.4, { sel: '#mbicon', x: 1110, y: 17 }], [4.85, { sel: '#row0 .n', x: 1220, y: 120 }], [5.9, { sel: '#row0 .n', x: 1220, y: 120 }], [6.5, { sel: '#row0 .btns > span:last-child', x: 1514, y: 128 }]], [3.48, 4.9, 6.6]);
-      caption(t, [{ at: 0.2, to: 3.2, text: 'Three sessions want you. Most urgent first.' }, { at: 3.4, to: 7.2, text: 'Everything waiting, in one list.' }]);
+      const onPay = t >= sw;
+      setTabs([
+        { title: '🟢 checkout-refactor', on: !onPay },
+        { title: '🟣 landing-page' },
+        { title: '🟠 payments', on: onPay, style: onPay && t < sw + 0.9 ? 'box-shadow: inset 0 0 0 2px #FF9F0A; background:#2f2a22' : '' },
+      ]);
+      setSessions([{ name: 'payments', state: 'input', on: onPay }, { name: 'landing-page', state: 'review' }, { name: 'checkout-refactor', state: 'done' }]);
+      $('#term').innerHTML = `<div class="c1">✻ Claude Code</div><div class="c3">&gt; migrate the plans table</div><br><div class="c2">● Bash(npm run migrate)</div>
+        <div style="margin-top:14px;border:1px solid #FF9F0A;border-radius:8px;padding:12px 14px;color:#fff">Allow Claude to run <b>npm run migrate</b>?<br>
+        <span style="color:#FF9F0A">❯ 1. Yes</span><br>  2. No, tell Claude what to do</div>`;
+      camera(t, [[0, FULL], [0.6, { x: 1260, y: 210, z: 1.5 }], [3.85, { x: 1260, y: 210, z: 1.5 }], [4.6, { x: 760, y: 300, z: 1.2 }], [6.4, { x: 760, y: 300, z: 1.2 }]]);
+      cursor(t, [[0, { x: 1000, y: 600 }], [0.8, { sel: '#mbicon', x: 1480, y: 17 }], [1.4, { sel: '#mbicon', x: 1480, y: 17 }], [2.1, { sel: '#row0 .n', x: 1220, y: 120 }], [2.55, { sel: '#row0 .n', x: 1220, y: 120 }],
+        [3.5, { sel: '#row0 .btns > span:last-child', x: 1514, y: 128 }], [4.0, { sel: '#row0 .btns > span:last-child', x: 1514, y: 128 }], [5.4, { x: 900, y: 480 }]], [iconAt, rowAt, goAt]);
+      caption(t, [{ at: 0.2, to: 2.2, text: 'Click the icon: everything waiting, most urgent first.' }, { at: 2.3, to: 3.65, text: 'Open one to see more and act on it.' }, { at: 3.9, to: 6.4, text: 'Or go straight to its terminal tab.' }]);
     },
   },
 
@@ -324,7 +353,7 @@ const CLIPS = {
         { name: 'docs-update', state: 'idle' },
       ]);
       $('#sbcount').textContent = ['', '● 1 Claude', '● 2 Claude', '● 3 Claude'][[1.2, 2.2, 3.2].filter((a) => t >= a).length];
-      camera(t, [[0, { x: 760, y: 420, z: 0.95 }], [0.9, { x: 580, y: 215, z: 1.5 }], [3.9, { x: 580, y: 215, z: 1.5 }], [4.6, { x: 560, y: 260, z: 1.25 }], [6.6, { x: 560, y: 260, z: 1.25 }]]);
+      camera(t, [[0, { x: 760, y: 420, z: 0.95 }], [0.9, { x: 600, y: 230, z: 1.4 }], [6.6, { x: 600, y: 230, z: 1.4 }]]);
       cursor(t, [[0, { x: 900, y: 700 }], [4.2, { x: 700, y: 420 }], [4.85, { sel: '.vtab:nth-child(1)', x: 560, y: 158 }], [6.6, { sel: '.vtab:nth-child(1)', x: 560, y: 158 }]], [5.0]);
       caption(t, [{ at: 0.3, to: 4.4, text: 'Every tab shows who is waiting.' }, { at: 4.6, to: 6.6, text: 'Looked at it? Back to normal.' }]);
     },
@@ -367,7 +396,7 @@ const CLIPS = {
         : `<div class="c1">✻ Claude Code</div><div class="c3">&gt; write the release notes</div><br><div class="c2">● Read(CHANGELOG.md)</div><div class="c3">  ⎿ ${sp} Working…</div>`;
       const waiting = list.filter((x) => ['input', 'review', 'done', 'error'].includes(x.state)).length;
       $('#sbcount').textContent = waiting ? `● ${waiting} Claude` : '';
-      camera(t, [[0, { x: 760, y: 440, z: 0.95 }], [0.8, { x: 330, y: 390, z: 2.0 }], [4.0, { x: 330, y: 390, z: 2.0 }], [4.9, { x: 720, y: 330, z: 1.15 }], [6.6, { x: 720, y: 330, z: 1.15 }]]);
+      camera(t, [[0, { x: 760, y: 440, z: 0.95 }], [0.9, { x: 430, y: 380, z: 1.5 }], [4.0, { x: 430, y: 380, z: 1.5 }], [4.9, { x: 720, y: 330, z: 1.15 }], [6.6, { x: 720, y: 330, z: 1.15 }]]);
       cursor(t, [[0, { x: 640, y: 700 }], [3.2, { x: 420, y: 520 }], [4.15, { sel: '#sess .srow:nth-child(1) .n', x: 260, y: 345 }], [6.6, { sel: '#sess .srow:nth-child(1) .n', x: 260, y: 345 }]], [clickAt]);
       caption(t, [{ at: 0.2, to: 4.2, text: 'Every session, live, in the sidebar.' }, { at: 4.4, to: 6.6, text: 'Click one, and you are there.' }]);
     },
@@ -390,7 +419,7 @@ const CLIPS = {
       setIcon(t >= 0.4 && t < back ? 'done' : t >= back ? 'input' : null, t >= back ? 3 : t >= 0.4 ? 1 : 0);
       const lk = Math.min(eprog(t, lockIn, lockIn + 0.4), 1 - eprog(t, lockOut, lockOut + 0.35));
       $('#lock').style.opacity = lk;
-      camera(t, [[0, FULL], [0.9, PILL], [1.5, { x: 905, y: 112, z: 1.85 }], [2.6, { x: 905, y: 112, z: 1.85 }], [3.2, FULL], [5.0, FULL], [5.8, { x: 800, y: 150, z: 1.4 }], [7.4, { x: 800, y: 150, z: 1.4 }]]);
+      camera(t, [[0, FULL], [0.9, PILL], [2.6, PILL], [3.2, FULL], [5.0, FULL], [5.7, { x: 800, y: 160, z: 1.35 }], [7.4, { x: 800, y: 160, z: 1.35 }]]);
       cursor(t, [[0, { x: 820, y: 700 }], [1.6, { x: 900, y: 420 }], [2.2, { sel: '#pills .pill .b:nth-child(2)', x: 906, y: 100 }], [2.7, { sel: '#pills .pill .b:nth-child(2)', x: 906, y: 100 }], [3.3, { x: 980, y: 520 }]], [clickAt]);
       $('#cursor').style.opacity = t > lockIn && t < lockOut + 0.4 ? 0 : 1;
       caption(t, [{ at: 0.3, to: 3.0, text: 'Not now? Snooze it for 5 minutes.' }, { at: 3.3, to: 5.0, text: 'You step away…' }, { at: 5.1, to: 7.4, text: '…nothing gets lost.' }]);
@@ -413,7 +442,7 @@ const CLIPS = {
       ]);
       edge(t, [{ state: 'free', at: freeAt }]);
       setIcon(t >= 0.35 && t < freeAt ? 'mac' : null, 0);
-      camera(t, [[0, FULL], [0.7, { x: 800, y: 300, z: 1.15 }], [4.4, { x: 800, y: 380, z: 1.05 }], [5.0, FULL], [6.8, FULL]]);
+      camera(t, [[0, FULL], [6.8, FULL]]); // the whole screen, so the red ring is always visible
       $('#cursor').style.opacity = 0;
       caption(t, [{ at: 0.3, to: 4.5, text: 'Claude is using your Mac: the red ring says hands off.' }, { at: 4.7, to: 6.8, text: 'Green means it is yours again.' }]);
     },
@@ -446,7 +475,7 @@ const CLIPS = {
       renderPills(t, [{ state: 'input', name: 'release-checklist', text: 'Enter your Mac password in the keychain prompt', at: 5.0 }]);
       edge(t, []);
       setIcon(t >= 5.0 ? 'input' : null, t >= 5.0 ? 1 : 0);
-      camera(t, [[0, { x: 760, y: 220, z: 1.25 }], [2.4, { x: 700, y: 180, z: 1.35 }], [2.9, { x: 420, y: 130, z: 1.9 }], [3.8, { x: 420, y: 130, z: 1.9 }], [4.4, FULL], [5.3, FULL], [6.2, PILL], [8.2, { x: 800, y: 112, z: 1.75 }]]);
+      camera(t, [[0, { x: 620, y: 260, z: 1.35 }], [3.9, { x: 620, y: 260, z: 1.35 }], [4.5, FULL], [5.3, FULL], [6.1, PILL], [8.2, PILL]]);
       $('#cursor').style.opacity = 0;
       caption(t, [{ at: 0.2, to: 2.6, text: 'Just ask Claude.' }, { at: 2.7, to: 4.2, text: 'It renames its own tab…' }, { at: 4.9, to: 8.2, text: '…and pings you when it needs you.' }]);
     },
@@ -467,7 +496,7 @@ function listHTML() {
     ${row('row2', 'done', 'checkout-refactor', 'Validation added · all 3 tests pass', 'now')}</div>`;
 }
 
-const TITLES = {"hero": {"label": "Done alerts", "head": "Know the moment a session is done", "sub": "A pill names the session. One click takes you to its terminal tab."}, "several": {"label": "Priorities", "head": "Several sessions, most urgent first", "sub": "Needs you, plan ready, done: sorted for you, all in one list."}, "tabs": {"label": "Tab dots", "head": "Your tabs show who is waiting", "sub": "🟢 done · 🟠 needs you · 🟣 plan ready · 🔴 error"}, "sessions": {"label": "Claude Sessions view", "head": "Every session at a glance", "sub": "Live state of all your Claude sessions, right in VS Code."}, "snooze": {"label": "Snooze & away", "head": "Snooze it. Step away. Nothing gets lost.", "sub": "Later brings it back in 5 minutes. Away? One summary when you return."}, "mac": {"label": "Computer use", "head": "See when Claude uses your Mac", "sub": "A red ring while it drives, a green glow when it is yours again."}, "talk": {"label": "Ask Claude", "head": "Just ask Claude", "sub": "It renames its own tab and pings you when it needs you."}};
+const TITLES = {"hero": {"label": "Alerts", "head": "Know the moment a session needs you", "sub": "Pills name the session, most urgent first. One click takes you to its terminal tab."}, "menubar": {"label": "Menu bar list", "head": "Everything waiting, in one list", "sub": "Click the menu bar icon: all alerts by urgency. Open one, act on it, or go there."}, "tabs": {"label": "Tab dots", "head": "Your tabs show who is waiting", "sub": "🟢 done · 🟠 needs you · 🟣 plan ready · 🔴 error"}, "sessions": {"label": "Claude Sessions view", "head": "Every session at a glance", "sub": "Live state of all your Claude sessions, right in VS Code."}, "snooze": {"label": "Snooze & away", "head": "Snooze it. Step away. Nothing gets lost.", "sub": "Later brings it back in 5 minutes. Away? One summary when you return."}, "mac": {"label": "Computer use", "head": "See when Claude uses your Mac", "sub": "A red ring while it drives, a green glow when it is yours again."}, "talk": {"label": "Ask Claude", "head": "Just ask Claude", "sub": "It renames its own tab and pings you when it needs you."}};
 const clipName = new URLSearchParams(location.search).get('clip') || 'hero';
 const clip = CLIPS[clipName];
 clip.build();

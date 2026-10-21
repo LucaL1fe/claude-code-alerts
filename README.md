@@ -4,7 +4,7 @@
 ready, even while you are in another app, and jump straight to its exact VS Code terminal tab with one click.
 
 <p align="center">
-  <img src="docs/media/hero.webp" alt="A Claude Code session finishes while you browse: a pill names the session, one click opens its VS Code tab" width="900">
+  <img src="docs/media/hero.webp" alt="Three Claude Code sessions want you while you work in another app: pills sorted by urgency, one click opens the exact VS Code terminal tab" width="900">
 </p>
 
 ```bash
@@ -32,12 +32,13 @@ Claude Code Alerts fixes exactly that:
 
 ## What it looks like
 
-### Several sessions want you at once
+### Everything waiting, in one list
 
-The most urgent comes first: orange needs you, purple plan ready, green done. The menu bar icon takes the color of the
-most urgent item and shows how many are waiting. Click a row to open it.
+Click the menu bar icon: every alert, most urgent first (orange needs you, purple plan ready, green done). The icon
+takes the color of the most urgent item and shows how many are waiting. Open a row to see more, act on it, or go
+straight to its terminal tab.
 
-<p align="center"><img src="docs/media/several.webp" alt="Three alerts stack by urgency; the menu bar list opens and goes to the session that needs permission" width="900"></p>
+<p align="center"><img src="docs/media/menubar.webp" alt="The menu bar list opens, a row expands, and go to opens its VS Code terminal tab" width="900"></p>
 
 ### Your tabs show who is waiting
 

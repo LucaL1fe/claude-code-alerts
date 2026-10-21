@@ -5,7 +5,7 @@ import { fileURLToPath } from 'url';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(process.env.PLAYWRIGHT_FROM || import.meta.url);
 const { chromium } = require('playwright');
-const checks = [['hero', 4.95], ['hero', 7.8], ['several', 4.68], ['several', 6.1], ['several', 7.8], ['tabs', 6.2], ['sessions', 5.6], ['snooze', 3.5]];
+const checks = [['hero', 5.4], ['menubar', 2.15], ['menubar', 3.5], ['menubar', 4.9], ['tabs', 6.2], ['sessions', 5.6], ['snooze', 3.5]];
 const b = await chromium.launch();
 const page = await b.newPage({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 2 });
 let n = 0;
