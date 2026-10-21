@@ -77,13 +77,12 @@ final class Store: ObservableObject {
     func session(_ id: String) -> Session? { sessions[id] }
 
     /// Sessions for the lists: most urgent first (needs you, plan, error, done, working, idle). Inside the same
-    /// urgency the newest session comes first, by start time, which never changes, so rows only move when a
-    /// session's urgency changes (not on every tool call).
+    /// urgency, the session you last wrote to comes first. That only changes when you write (or a session starts),
+    /// never during tool calls, so rows don't jump around.
     var sortedSessions: [Session] {
         sessions.values.filter { visible($0.id) && !($0.id.hasPrefix("debug-") && $0.state == .idle) }.sorted { a, b in
             if a.state.urgency != b.state.urgency { return a.state.urgency < b.state.urgency }
-            let sa = a.started ?? .distantPast, sb = b.started ?? .distantPast
-            return sa != sb ? sa > sb : a.id < b.id
+            return a.touched != b.touched ? a.touched > b.touched : a.id < b.id
         }
     }
 
@@ -268,7 +267,7 @@ final class Store: ObservableObject {
             // You are at this session: its reminders are answered.
             alerts.removeAll { $0.sessionId == id }
             tabTitles.forget(id)
-            if var s = sessions[id] { s.notifyPending = false; sessions[id] = s }
+            if var s = sessions[id] { s.notifyPending = false; s.lastPrompt = Date(); sessions[id] = s }
             setState(id, .working, "Working")
         case "PostToolUse":
             let tool = msg.toolName.map { $0.hasPrefix("mcp__") ? String($0.split(separator: "_").last ?? "") : $0 } ?? ""
