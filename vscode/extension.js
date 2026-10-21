@@ -93,8 +93,8 @@ async function onMessage(m) {
     const t = await findTerminal(m.shellPid);
     if (t) t.show(false);
   } else if (m.kind === 'sessions') {
-    sessions = (m.sessions || []).slice().sort((a, b) =>
-      (URGENCY[a.state] ?? 9) - (URGENCY[b.state] ?? 9) || b.updated - a.updated);
+    // The app sends them in order: most urgent first, newest session first within the same urgency.
+    sessions = (m.sessions || []).slice();
     tree.refresh();
     updateStatus();
   }

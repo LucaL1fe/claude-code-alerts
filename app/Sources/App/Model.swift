@@ -76,13 +76,18 @@ struct Session: Codable, Identifiable, Equatable {
     var notifyPending = false
     /// Where the session runs: vscode-terminal, vscode-panel, terminal[:bundle id], desktop, background.
     var origin: String? = nil
+    /// When the session started (for a stable list order).
+    var started: Date? = nil
+
+    /// Running or wanting you: these are listed on top.
+    var isActive: Bool { state != .idle }
 
     var isBackground: Bool { origin == "background" }
 
     var name: String { customName ?? autoName }
 
     enum CodingKeys: String, CodingKey {
-        case id, autoName, customName, claudePid, shellPid, tty, cwd, transcript, state, detail, updated, notifyPending, origin
+        case id, autoName, customName, claudePid, shellPid, tty, cwd, transcript, state, detail, updated, notifyPending, origin, started
     }
 
     init(id: String, autoName: String, customName: String?, claudePid: Int32, shellPid: Int32, tty: String?, cwd: String,
@@ -107,6 +112,7 @@ struct Session: Codable, Identifiable, Equatable {
         updated = try c.decode(Date.self, forKey: .updated)
         notifyPending = try c.decodeIfPresent(Bool.self, forKey: .notifyPending) ?? false
         origin = try c.decodeIfPresent(String.self, forKey: .origin)
+        started = try c.decodeIfPresent(Date.self, forKey: .started)
     }
 }
 

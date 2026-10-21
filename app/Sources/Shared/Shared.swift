@@ -254,6 +254,7 @@ public enum ClaudeSessions {
         public var cwd: String
         public var name: String?
         public var busy: Bool
+        public var startedAt: Date?
     }
 
     public static func scan() -> [Entry] {
@@ -266,8 +267,9 @@ public enum ClaudeSessions {
                   let pid = (obj["pid"] as? NSNumber)?.int32Value, Proc.isAlive(pid),
                   let id = obj["sessionId"] as? String, (obj["kind"] as? String ?? "interactive") == "interactive"
             else { continue }
+            let started = (obj["startedAt"] as? NSNumber).map { Date(timeIntervalSince1970: $0.doubleValue / 1000) }
             out.append(Entry(pid: pid, sessionId: id, cwd: obj["cwd"] as? String ?? "", name: obj["name"] as? String,
-                             busy: (obj["status"] as? String) == "busy"))
+                             busy: (obj["status"] as? String) == "busy", startedAt: started))
         }
         return out
     }
