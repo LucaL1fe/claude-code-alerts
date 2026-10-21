@@ -44,12 +44,24 @@ final class TabTitles {
         written = written.filter { alive.contains($0.key) }
     }
 
+    /// Writes the name (or dot + name) of each session again, e.g. after VS Code reloaded its window.
+    func restore(_ sessions: [Session], enabled: Bool) {
+        for s in sessions where !s.id.hasPrefix("debug-") {
+            guard let tty = s.tty else { continue }
+            let title = enabled ? (Self.dot(s.state).map { "\($0) \(s.name)" } ?? "✳ \(s.name)") : "✳ \(s.name)"
+            written[s.id] = title
+            Self.write(title, to: tty)
+        }
+    }
+
     /// Claude started working again and draws its own title: ours is gone.
     func forget(_ sessionId: String) { written.removeValue(forKey: sessionId) }
 
     private static func write(_ title: String, to tty: String) {
         let clean = title.replacingOccurrences(of: "\u{07}", with: "").replacingOccurrences(of: "\u{1b}", with: "")
-        let seq = "\u{1b}]2;\(clean)\u{07}"
+        // VS Code shows a Claude terminal's title only after it saw "Claude Code" in a title (that is how it detects
+        // the agent, and a window reload forgets it), so that comes first.
+        let seq = "\u{1b}]2;Claude Code\u{07}\u{1b}]2;\(clean)\u{07}"
         let fd = open(tty, O_WRONLY | O_NOCTTY | O_NONBLOCK)
         guard fd >= 0 else { return }
         defer { close(fd) }

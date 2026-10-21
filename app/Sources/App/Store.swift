@@ -78,7 +78,7 @@ final class Store: ObservableObject {
 
     /// Sessions worth listing: a session that was only opened (no prompt yet) is left out.
     var sortedSessions: [Session] {
-        sessions.values.filter { visible($0.id) && !($0.state == .idle && $0.detail.isEmpty) }.sorted { a, b in
+        sessions.values.filter { visible($0.id) && !($0.id.hasPrefix("debug-") && $0.state == .idle) }.sorted { a, b in
             a.state.urgency != b.state.urgency ? a.state.urgency < b.state.urgency : a.updated > b.updated
         }
     }
@@ -142,6 +142,7 @@ final class Store: ObservableObject {
             reply.sessions = sessionInfos()
             reply.text = windows.values.map { w in
                 "\((w.workspace as NSString?)?.lastPathComponent ?? "untitled") (\(w.terminals.count) terminals\(w.focused ? ", focused" : ""))"
+                    + (msg.flag == true ? ": " + w.terminals.map { "\($0.name)[\($0.pid)]" }.joined(separator: " | ") : "")
             }.joined(separator: ", ")
             reply.flag = away
             conn.send(reply)
@@ -456,9 +457,40 @@ final class Store: ObservableObject {
         changed()
     }
 
+    // MARK: - Discovery
+
+    private var lastDiscovery = Date.distantPast
+
+    /// Picks up every running Claude session from Claude Code's own records, also ones no hook has reported yet,
+    /// and keeps their names current.
+    func discover() {
+        lastDiscovery = Date()
+        var dirty = false
+        for e in ClaudeSessions.scan() {
+            let shell = Proc.info(e.pid).flatMap { Proc.info($0.ppid) }
+            if var s = sessions[e.sessionId] {
+                if let n = e.name, !n.isEmpty, s.autoName != n { s.autoName = n; dirty = true }
+                if s.claudePid != e.pid { s.claudePid = e.pid; dirty = true }
+                if let sh = shell, s.shellPid != sh.pid { s.shellPid = sh.pid; s.tty = sh.tty; dirty = true }
+                sessions[e.sessionId] = s
+            } else {
+                if demoMode && !e.cwd.contains("claude-code-alerts-demo") { continue }
+                // The same terminal may still hold an older session of this process.
+                sessions = sessions.filter { $0.value.claudePid != e.pid || $0.key.hasPrefix("debug-") }
+                sessions[e.sessionId] = Session(id: e.sessionId, autoName: e.name ?? (e.cwd as NSString).lastPathComponent,
+                                                customName: nil, claudePid: e.pid, shellPid: shell?.pid ?? 0,
+                                                tty: shell?.tty, cwd: e.cwd, transcript: nil,
+                                                state: e.busy ? .working : .idle, detail: "", updated: Date())
+                dirty = true
+            }
+        }
+        if dirty { changed() }
+    }
+
     // MARK: - Timers (called every second)
 
     func tick() {
+        if Date().timeIntervalSince(lastDiscovery) > 15 { discover() }
         var dirty = false
         let now = Date()
         for i in alerts.indices where alerts[i].status == .snoozed {
@@ -515,7 +547,13 @@ final class Store: ObservableObject {
         if let t = msg.terminals { w.terminals = t }
         if let f = msg.focused { w.focused = f }
         windows[conn.id] = w
-        if msg.kind == "vscodeHello" { conn.send(sessionsMessage()) }
+        if msg.kind == "vscodeHello" {
+            conn.send(sessionsMessage())
+            // A (re)loaded window forgets the tab titles: write every session's name again.
+            discover()
+            let pids = Set(w.terminals.map(\.pid))
+            tabTitles.restore(sessions.values.filter { pids.contains($0.shellPid) }, enabled: settings.tabDots)
+        }
         // Seen: the focused window's active terminal.
         if w.focused, let active = w.terminals.first(where: { $0.active }),
            let s = sessions.values.first(where: { $0.shellPid == active.pid }),

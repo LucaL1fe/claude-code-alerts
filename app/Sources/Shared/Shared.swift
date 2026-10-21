@@ -241,3 +241,31 @@ public enum TextUtil {
         return ""
     }
 }
+
+
+/// Running Claude Code sessions as Claude Code itself records them (~/.claude/sessions/<pid>.json).
+public enum ClaudeSessions {
+    public struct Entry {
+        public var pid: Int32
+        public var sessionId: String
+        public var cwd: String
+        public var name: String?
+        public var busy: Bool
+    }
+
+    public static func scan() -> [Entry] {
+        let dir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/sessions")
+        guard let files = try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) else { return [] }
+        var out: [Entry] = []
+        for url in files where url.pathExtension == "json" {
+            guard let data = try? Data(contentsOf: url),
+                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let pid = (obj["pid"] as? NSNumber)?.int32Value, Proc.isAlive(pid),
+                  let id = obj["sessionId"] as? String, (obj["kind"] as? String ?? "interactive") == "interactive"
+            else { continue }
+            out.append(Entry(pid: pid, sessionId: id, cwd: obj["cwd"] as? String ?? "", name: obj["name"] as? String,
+                             busy: (obj["status"] as? String) == "busy"))
+        }
+        return out
+    }
+}

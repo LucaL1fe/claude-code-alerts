@@ -208,8 +208,8 @@ function activate(context) {
     { dispose: () => { clearTimeout(retry); if (sock) sock.destroy(); } }
   );
   connect();
-  // Ages in the view ("3 min") stay fresh.
-  const timer = setInterval(() => tree.refresh(), 30000);
+  // Ages in the view ("3 min") stay fresh; tab titles change without an event, so report them now and then.
+  const timer = setInterval(() => { tree.refresh(); report(); }, 30000);
   context.subscriptions.push({ dispose: () => clearInterval(timer) });
 }
 
