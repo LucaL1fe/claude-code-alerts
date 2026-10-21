@@ -7,7 +7,8 @@ final class NotchHover: ObservableObject {
     @Published var overList = false
 }
 
-/// A black band around the notch with one dot per session. Hover it to see the list.
+/// A black band that extends the notch to the right with one dot per session. Hover it to see the list.
+/// (The menu bar icon is the one icon; the band only adds the per-session dots.)
 struct NotchBandView: View {
     @ObservedObject private var store = Store.shared
     @ObservedObject var hover: NotchHover
@@ -16,23 +17,15 @@ struct NotchBandView: View {
 
     var body: some View {
         let sessions = store.sortedSessions
-        let kind: AState? = store.macSessionId != nil ? .mac : store.waiting.first?.kind
         HStack(spacing: 0) {
-            HStack {
-                Spacer(minLength: 0)
-                Image(nsImage: MenuBarController.icon(color: (kind ?? .idle).nsColor))
-                    .resizable().frame(width: 11, height: 11)
-                    .opacity(kind == nil ? 0.55 : 1)
-            }
-            .frame(width: side - 6)
-            Spacer().frame(width: notchWidth + 12)
+            Spacer().frame(width: notchWidth + 8)
             HStack(spacing: 3) {
                 ForEach(Array(sessions.prefix(5))) { s in
                     Circle().fill(s.state.color).frame(width: 6, height: 6)
                 }
                 Spacer(minLength: 0)
             }
-            .frame(width: side - 6)
+            .frame(width: side - 8)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(UnevenRoundedRectangle(bottomLeadingRadius: 10, bottomTrailingRadius: 10).fill(Color.black))
@@ -77,10 +70,10 @@ final class NotchController {
         let h = s.safeAreaInsets.top
         let notchX = s.frame.minX + left.width
         let notchW = s.frame.width - left.width - right.width
-        let side: CGFloat = 34
-        let rect = NSRect(x: notchX - side, y: s.frame.maxY - h, width: notchW + side * 2, height: h)
+        let side: CGFloat = 46
+        let rect = NSRect(x: notchX - 4, y: s.frame.maxY - h, width: notchW + 4 + side, height: h)
         let p = OverlayPanel(rect: rect, level: level, clickThrough: false)
-        p.contentView = NSHostingView(rootView: NotchBandView(hover: hover, notchWidth: notchW - 12, side: side))
+        p.contentView = NSHostingView(rootView: NotchBandView(hover: hover, notchWidth: notchW - 4, side: side))
         p.orderFrontRegardless()
         band = p
     }

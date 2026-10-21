@@ -69,8 +69,37 @@ struct Session: Codable, Identifiable, Equatable {
     var state: AState
     var detail: String
     var updated: Date
+    /// Claude called `cca notify --needs-you` and waits for you.
+    var notifyPending = false
 
     var name: String { customName ?? autoName }
+
+    enum CodingKeys: String, CodingKey {
+        case id, autoName, customName, claudePid, shellPid, tty, cwd, transcript, state, detail, updated, notifyPending
+    }
+
+    init(id: String, autoName: String, customName: String?, claudePid: Int32, shellPid: Int32, tty: String?, cwd: String,
+         transcript: String?, state: AState, detail: String, updated: Date) {
+        self.id = id; self.autoName = autoName; self.customName = customName; self.claudePid = claudePid
+        self.shellPid = shellPid; self.tty = tty; self.cwd = cwd; self.transcript = transcript; self.state = state
+        self.detail = detail; self.updated = updated
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        autoName = try c.decode(String.self, forKey: .autoName)
+        customName = try c.decodeIfPresent(String.self, forKey: .customName)
+        claudePid = try c.decode(Int32.self, forKey: .claudePid)
+        shellPid = try c.decode(Int32.self, forKey: .shellPid)
+        tty = try c.decodeIfPresent(String.self, forKey: .tty)
+        cwd = try c.decode(String.self, forKey: .cwd)
+        transcript = try c.decodeIfPresent(String.self, forKey: .transcript)
+        state = try c.decode(AState.self, forKey: .state)
+        detail = try c.decode(String.self, forKey: .detail)
+        updated = try c.decode(Date.self, forKey: .updated)
+        notifyPending = try c.decodeIfPresent(Bool.self, forKey: .notifyPending) ?? false
+    }
 }
 
 enum AlertStatus: String, Codable {
@@ -108,7 +137,7 @@ final class AppSettings: ObservableObject {
     @Published var foldSeconds: Int { didSet { d.set(foldSeconds, forKey: "foldSeconds") } }
 
     private init() {
-        d.register(defaults: ["laterMinutes": 5, "sound": true, "voice": false, "macRing": true, "notchBand": true, "awayMinutes": 3, "foldSeconds": 0])
+        d.register(defaults: ["laterMinutes": 5, "sound": true, "voice": false, "macRing": true, "notchBand": false, "awayMinutes": 3, "foldSeconds": 0])
         laterMinutes = d.integer(forKey: "laterMinutes")
         sound = d.bool(forKey: "sound")
         voice = d.bool(forKey: "voice")

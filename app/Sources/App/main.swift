@@ -22,6 +22,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         overlay.onMore = { [weak self] in self?.menuBar.show() }
         menuBar.onOpenChange = { [weak self] open in self?.overlay.listOpen = open }
         store.onGoTo = { [weak self] in self?.menuBar.close() }
+        store.onDebugUI = { [weak self] action in
+            if action == "list" { self?.menuBar.show() }
+            if action == "close" { self?.menuBar.close() }
+        }
         notch.onOpenChange = { [weak self] open in self?.overlay.listOpen = open }
 
         store.onFlare = { [weak self] kind in self?.overlay.flare(kind) }

@@ -27,6 +27,7 @@ func usage() -> Never {
       cca debug away on|off            pretend you are away / back
       cca debug demo on|off            demo mode: ignore real sessions (for recordings)
       cca debug clear                  remove all alerts
+      cca debug ui list|close|expand|quiet|later|done|goto   scripted UI steps for demo recordings
     """)
     exit(0)
 }
@@ -202,6 +203,10 @@ case "debug":
         msg.cwd = flagValue("--cwd") ?? FileManager.default.currentDirectoryPath
     case "away", "demo":
         msg.flag = (args.first ?? "on") == "on"
+    case "goto":
+        if let p = flagValue("--shell"), let pid = Int32(p) { msg.shellPid = pid }
+    case "ui":
+        msg.text = args.first ?? ""
     default:
         break
     }

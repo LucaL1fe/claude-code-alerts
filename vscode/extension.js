@@ -174,6 +174,13 @@ function devTerminal(q) {
   reportSoon();
 }
 
+// Development helper for demos: closes every terminal of this window (only with devTerminals on).
+function devClose() {
+  if (!vscode.workspace.getConfiguration('claudeCodeAlerts').get('devTerminals')) return;
+  for (const t of vscode.window.terminals) t.dispose();
+  reportSoon();
+}
+
 function activate(context) {
   status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 50);
   status.command = 'claudeCodeAlerts.sessions.focus';
@@ -193,6 +200,7 @@ function activate(context) {
         const pid = Number(q.get('pid'));
         if (uri.path === '/focus' && pid) onMessage({ kind: 'focusTerminal', shellPid: pid });
         if (uri.path === '/dev-terminal') devTerminal(q);
+        if (uri.path === '/dev-close') devClose();
       }
     }),
     { dispose: () => { clearTimeout(retry); if (sock) sock.destroy(); } }

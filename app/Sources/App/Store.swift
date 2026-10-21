@@ -21,7 +21,13 @@ final class Store: ObservableObject {
     @Published var summaryCount = 0
     @Published var macSessionId: String?
     @Published var editingSessionId: String?
-    @Published var demoMode = false
+    @Published var expandedAlertId: UUID?
+    /// Debug UI steps for scripted demo recordings ("list", "close").
+    var onDebugUI: ((String) -> Void)?
+    /// Demo mode (for recordings) survives restarts until switched off.
+    @Published var demoMode = UserDefaults.standard.bool(forKey: "demoMode") {
+        didSet { UserDefaults.standard.set(demoMode, forKey: "demoMode") }
+    }
     var debugAway = false
     var windows: [UUID: VSWindow] = [:]
     var lastMacUse = Date.distantPast
@@ -70,8 +76,9 @@ final class Store: ObservableObject {
 
     func session(_ id: String) -> Session? { sessions[id] }
 
+    /// Sessions worth listing: a session that was only opened (no prompt yet) is left out.
     var sortedSessions: [Session] {
-        sessions.values.filter { visible($0.id) }.sorted { a, b in
+        sessions.values.filter { visible($0.id) && !($0.state == .idle && $0.detail.isEmpty) }.sorted { a, b in
             a.state.urgency != b.state.urgency ? a.state.urgency < b.state.urgency : a.updated > b.updated
         }
     }
@@ -223,6 +230,7 @@ final class Store: ObservableObject {
         case "UserPromptSubmit":
             // You are at this session: its reminders are answered.
             alerts.removeAll { $0.sessionId == id }
+            if var s = sessions[id] { s.notifyPending = false; sessions[id] = s }
             setState(id, .working, "Working")
         case "PostToolUse":
             let tool = msg.toolName.map { $0.hasPrefix("mcp__") ? String($0.split(separator: "_").last ?? "") : $0 } ?? ""
@@ -274,6 +282,7 @@ final class Store: ObservableObject {
         if demoMode && !isDemoSession(msg) { return }
         guard let id = upsert(msg) else { return }
         let kind = AState(rawValue: msg.state ?? "input") ?? .input
+        if var s = sessions[id] { s.notifyPending = kind == .input; sessions[id] = s }
         raise(id, kind, msg.text ?? "Claude needs you", source: "notify")
         changed()
     }
@@ -295,6 +304,15 @@ final class Store: ObservableObject {
     /// One alert per session; a new event only replaces it when it is at least as urgent, so "done" never hides
     /// "needs you", and Claude's generic follow-up messages never hide a specific question or a plan.
     func raise(_ id: String, _ kind: AState, _ text: String, source: String = "") {
+        // Claude asked for you on purpose (cca notify) and is now waiting: that stays the session's state and
+        // alert until you act, even if you were looking at the tab when it came in.
+        if source != "notify", let s = sessions[id], s.state == .input, s.notifyPending, kind.urgency > AState.input.urgency { return }
+        // A plan waits for approval: Claude's generic "needs your approval" message must not replace it,
+        // also when no alert exists because you were looking at the tab.
+        let generic = source == "Notification" || source == "PermissionRequest"
+        if let st = sessions[id]?.state, st == .review, kind == .input, generic { return }
+        if let st = sessions[id]?.state, st == .input, kind == .input, source == "Notification",
+           let s = sessions[id], Date().timeIntervalSince(s.updated) < 300 { return }
         if let existing = alerts.first(where: { $0.sessionId == id && $0.kind != .mac && $0.kind != .free }) {
             var keep = existing.kind.urgency < kind.urgency
             if existing.kind == .review && kind == .input && (source == "Notification" || source == "PermissionRequest") { keep = true }
@@ -388,6 +406,7 @@ final class Store: ObservableObject {
     /// You looked at the session: its reminders go away, a finished session becomes idle.
     func markSeen(_ sessionId: String) {
         let before = alerts.count
+        if var s = sessions[sessionId], s.notifyPending { s.notifyPending = false; sessions[sessionId] = s }
         alerts.removeAll { $0.sessionId == sessionId && $0.kind != .mac }
         if let s = sessions[sessionId], s.state == .done || s.state == .error { setState(sessionId, .idle) }
         if alerts.count != before { save() }
@@ -531,12 +550,19 @@ final class Store: ObservableObject {
     private func handleDebug(_ msg: Msg) {
         switch msg.event {
         case "event":
-            let id = msg.sessionId ?? "debug-demo"
-            var m = msg
-            m.sessionId = id
-            m.claudePid = 0
-            upsert(m)
-            if var s = sessions[id], let n = msg.name { s.autoName = n; sessions[id] = s }
+            // With --shell of a real session, the event goes to that session (and --name renames it).
+            let real = msg.shellPid.flatMap { pid in sessions.values.first { $0.shellPid == pid && !$0.id.hasPrefix("debug-") } }
+            let id = real?.id ?? msg.sessionId ?? "debug-demo"
+            if real == nil {
+                var m = msg
+                m.sessionId = id
+                m.claudePid = 0
+                upsert(m)
+                if var s = sessions[id], let n = msg.name { s.autoName = n; sessions[id] = s }
+            } else if var s = sessions[id], let n = msg.name {
+                s.customName = n
+                sessions[id] = s
+            }
             let kind = AState(rawValue: msg.state ?? "done") ?? .done
             switch kind {
             case .working, .idle:
@@ -558,6 +584,22 @@ final class Store: ObservableObject {
             alerts.removeAll()
             sessions = sessions.filter { !$0.key.hasPrefix("debug-") }
             summaryCount = 0
+        case "goto":
+            if let pid = msg.shellPid, let s = sessions.values.first(where: { $0.shellPid == pid && $0.id.hasPrefix("debug-") })
+                ?? sessions.values.first(where: { $0.shellPid == pid }) {
+                goTo(s.id)
+            }
+        case "ui":
+            // Scripted demo steps: the same actions as the buttons, for recordings.
+            let first = pills.first ?? waiting.first
+            switch msg.text ?? "" {
+            case "expand": expandedAlertId = waiting.first?.id
+            case "quiet": if let a = first { quiet(a.id) }
+            case "later": if let a = first { later(a.id) }
+            case "done": if let a = first { done(a.id) }
+            case "goto": if let a = first { goTo(alert: a.id) }
+            default: onDebugUI?(msg.text ?? "")
+            }
         case "endsession":
             if let id = msg.sessionId { sessions.removeValue(forKey: id); alerts.removeAll { $0.sessionId == id } }
         default:

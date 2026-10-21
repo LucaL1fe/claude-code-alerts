@@ -273,8 +273,8 @@ private struct HeightKey: PreferenceKey {
 
 struct AlertList: View {
     @ObservedObject private var store = Store.shared
-    @State private var expanded: UUID?
     @State private var contentHeight: CGFloat = 200
+    private var expanded: Binding<UUID?> { Binding(get: { store.expandedAlertId }, set: { store.expandedAlertId = $0 }) }
     var width: CGFloat = 380
     var showFooter = true
     var onClose: () -> Void = {}
@@ -299,14 +299,14 @@ struct AlertList: View {
             .padding(.horizontal, 4)
             ScrollView(.vertical, showsIndicators: contentHeight > maxHeight) {
                 VStack(alignment: .leading, spacing: 6) {
-                    ForEach(waiting) { AlertRow(alert: $0, expanded: $expanded) }
+                    ForEach(waiting) { AlertRow(alert: $0, expanded: expanded) }
                     if !muted.isEmpty {
                         Text("Muted · \(muted.count)").font(.system(size: 11, weight: .bold)).foregroundColor(.white.opacity(0.45))
                             .padding(.horizontal, 4).padding(.top, 4)
-                        ForEach(muted) { AlertRow(alert: $0, expanded: $expanded, dim: true) }
+                        ForEach(muted) { AlertRow(alert: $0, expanded: expanded, dim: true) }
                     }
-                    if !store.sessions.isEmpty {
-                        Text("Sessions · \(store.sessions.count)").font(.system(size: 11, weight: .bold)).foregroundColor(.white.opacity(0.45))
+                    if !store.sortedSessions.isEmpty {
+                        Text("Sessions · \(store.sortedSessions.count)").font(.system(size: 11, weight: .bold)).foregroundColor(.white.opacity(0.45))
                             .padding(.horizontal, 4).padding(.top, 6)
                         ForEach(store.sortedSessions) { SessionRow(session: $0) }
                     }
