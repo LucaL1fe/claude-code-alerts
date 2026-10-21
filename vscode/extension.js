@@ -23,6 +23,7 @@ const LABEL = {
 const URGENCY = { input: 0, review: 1, error: 2, done: 3, mac: 4, free: 5, working: 6, idle: 7 };
 
 let sock = null;
+let extUri = null;
 let buffer = '';
 let retry = null;
 let sessions = [];
@@ -117,7 +118,11 @@ class SessionTree {
   getTreeItem(s) {
     const item = new vscode.TreeItem(s.name);
     item.description = `${LABEL[s.state] || s.state} · ${ago(s.updated)}${s.detail ? ' · ' + s.detail : ''}`;
-    item.iconPath = new vscode.ThemeIcon('circle-filled', new vscode.ThemeColor(COLOR[s.state] || 'foreground'));
+    // Colored dots are files, so a selected row keeps its state color (VS Code paints selected theme icons white).
+    // Only the grey idle dot is a theme icon and turns white when you select it.
+    item.iconPath = s.state === 'idle' || !extUri
+      ? new vscode.ThemeIcon('circle-filled', new vscode.ThemeColor(COLOR.idle))
+      : vscode.Uri.joinPath(extUri, 'media', `dot-${s.state}.svg`);
     item.tooltip = `${s.name}\n${LABEL[s.state] || s.state}\n${s.detail || ''}`;
     item.command = { command: 'claudeCodeAlerts.goto', title: 'Go to session', arguments: [s] };
     return item;
@@ -182,6 +187,7 @@ function devClose() {
 }
 
 function activate(context) {
+  extUri = context.extensionUri;
   status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 50);
   status.command = 'claudeCodeAlerts.sessions.focus';
   context.subscriptions.push(
