@@ -26,7 +26,7 @@ fi
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 if [ -z "$SELF_DIR" ]; then
-  say "Downloading $REPO…"
+  say "Downloading ${REPO}…"
   curl -fsSL "https://github.com/$REPO/archive/refs/heads/main.tar.gz" | tar xz -C "$TMP"
   SRC="$(ls -d "$TMP"/claude-code-alerts-*)"
 else
