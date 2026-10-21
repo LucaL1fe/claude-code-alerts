@@ -32,7 +32,7 @@ final class Actions {
         focus.shellPid = s.shellPid
         if let owner {
             if let ws = owner.workspace, FileManager.default.fileExists(atPath: ws) {
-                runCode([ws]) { owner.conn.send(focus) }
+                raiseWindow(of: ws) { owner.conn.send(focus) }
             } else {
                 activateVSCode()
             }
@@ -68,21 +68,17 @@ final class Actions {
         return !shells.contains(parent.comm) && !parent.comm.hasPrefix("-")
     }
 
-    private var codeCLI: String? {
-        guard let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.microsoft.VSCode") else { return nil }
-        let path = app.appendingPathComponent("Contents/Resources/app/bin/code").path
-        return FileManager.default.isExecutableFile(atPath: path) ? path : nil
-    }
-
-    private func runCode(_ args: [String], then: @escaping () -> Void) {
-        guard let cli = codeCLI else { activateVSCode(); then(); return }
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: cli)
-        p.arguments = args
-        p.standardOutput = FileHandle.nullDevice
-        p.standardError = FileHandle.nullDevice
-        p.terminationHandler = { _ in DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { then() } }
-        do { try p.run() } catch { activateVSCode(); then() }
+    /// Brings up the VS Code window that has this folder open (macOS then switches to its desktop).
+    /// Goes through Launch Services like a double click, so no extra VS Code process shows up in the Dock.
+    private func raiseWindow(of folder: String, then: @escaping () -> Void) {
+        guard let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.microsoft.VSCode") else {
+            activateVSCode(); then(); return
+        }
+        let cfg = NSWorkspace.OpenConfiguration()
+        cfg.activates = true
+        NSWorkspace.shared.open([URL(fileURLWithPath: folder)], withApplicationAt: app, configuration: cfg) { _, _ in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { then() }
+        }
     }
 
     func activateVSCode() {

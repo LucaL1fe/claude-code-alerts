@@ -1,0 +1,136 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Claude Code Alerts promo</title>
+<style>
+  @font-face { font-family: "NY"; src: url("file:///System/Library/Fonts/NewYork.ttf"); }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; width: 1280px; height: 800px; overflow: hidden; background: #F0EEE6; }
+  body { font-family: -apple-system, "SF Pro Text", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+
+  /* the virtual desktop the camera moves over */
+  #viewport { position: absolute; inset: 0; overflow: hidden; background: #F0EEE6; }
+  #stage { position: absolute; left: 0; top: 0; width: 1600px; height: 1000px; transform-origin: 0 0;
+           background: radial-gradient(120% 90% at 20% 10%, #F6E7D8 0%, #EBD5C3 45%, #D9B9A3 100%); overflow: hidden; }
+
+  /* menu bar + notch */
+  #menubar { position: absolute; left: 0; top: 0; width: 1600px; height: 34px; background: rgba(250,249,245,.72);
+             backdrop-filter: blur(20px); display: flex; align-items: center; justify-content: space-between;
+             padding: 0 18px; font-size: 14px; color: #1f1e1d; z-index: 50; }
+  #menubar .left { display: flex; gap: 22px; align-items: center; }
+  #menubar .left b { font-weight: 700; }
+  #menubar .right { display: flex; gap: 20px; align-items: center; font-weight: 500; }
+  #notch { position: absolute; left: 700px; top: 0; width: 200px; height: 34px; background: #000; border-radius: 0 0 16px 16px; z-index: 60; }
+  #mbicon { position: relative; display: flex; align-items: center; gap: 6px; padding: 3px 7px; border-radius: 7px; }
+  #mbicon .grid { display: grid; grid-template-columns: 9px 9px; gap: 2px; }
+  #mbicon .grid i { width: 9px; height: 9px; border-radius: 2.5px; background: #1f1e1d; display: block; }
+  #mbicon .grid i + i { opacity: .55; }
+  #mbcount { font: 700 14px/1 -apple-system; font-variant-numeric: tabular-nums; }
+
+  /* windows */
+  .win { position: absolute; border-radius: 14px; overflow: hidden; box-shadow: 0 30px 80px rgba(60,35,20,.28), 0 0 0 1px rgba(0,0,0,.08); }
+  .titlebar { height: 40px; display: flex; align-items: center; padding: 0 16px; gap: 8px; }
+  .dots { display: flex; gap: 8px; }
+  .dots i { width: 12px; height: 12px; border-radius: 50%; display: block; }
+  .dots i:nth-child(1) { background: #ff5f57 } .dots i:nth-child(2) { background: #febc2e } .dots i:nth-child(3) { background: #28c840 }
+
+  /* browser with a meme feed */
+  #browser { left: 190px; top: 80px; width: 1220px; height: 860px; background: #1a1a1b; }
+  #browser .titlebar { background: #2b2b2e; }
+  #browser .tab { margin-left: 18px; background: #3a3a3e; color: #e8e8e8; padding: 7px 16px; border-radius: 8px 8px 0 0; font-size: 13px; align-self: flex-end; }
+  #browser .url { height: 42px; background: #3a3a3e; display: flex; align-items: center; padding: 0 18px; }
+  #browser .url span { background: #1f1f22; color: #c9c9cc; font-size: 14px; padding: 7px 16px; border-radius: 16px; width: 520px; }
+  .feed { padding: 0 0 0 0; color: #d7dadc; }
+  .banner { height: 120px; background: repeating-linear-gradient(-30deg, #ff4500 0 26px, #ff5a1f 26px 52px); }
+  .sub { display: flex; align-items: center; gap: 18px; padding: 0 60px; margin-top: -34px; }
+  .sub .logo { width: 84px; height: 84px; border-radius: 50%; background: #ff4500; border: 4px solid #1a1a1b; display: flex; align-items: center; justify-content: center; color: #fff; font: 800 30px/1 ui-monospace, monospace; }
+  .sub h1 { font-size: 34px; margin: 34px 0 0; color: #fff; }
+  .post { margin: 34px 60px 0 60px; width: 640px; background: #1f1f21; border-radius: 16px; padding: 18px 22px 22px; }
+  .post .meta { font-size: 13px; color: #8a8c90; }
+  .post h2 { font-size: 21px; margin: 8px 0 14px; color: #f1f1f1; }
+  .meme { height: 470px; border-radius: 12px; background: #fff; color: #111; display: flex; flex-direction: column; overflow: hidden; }
+  .meme .top { padding: 22px 26px; font: 600 30px/1.18 -apple-system; }
+  .meme .pic { flex: 1; display: grid; grid-template-columns: 1fr 1fr; border-top: 2px solid #111; }
+  .meme .pic div { display: flex; align-items: center; justify-content: center; text-align: center; font: 800 26px/1.15 -apple-system; padding: 16px; }
+  .meme .pic div:first-child { background: #F2E9DF; border-right: 2px solid #111; }
+  .meme .pic div:last-child { background: #DCEBD7; }
+  .side { position: absolute; right: 60px; top: 312px; width: 360px; background: #1f1f21; border-radius: 16px; padding: 18px 22px; color: #c9c9cc; font-size: 14px; line-height: 1.5; }
+  .side b { color: #fff; font-size: 15px; }
+
+  /* VS Code */
+  #vscode { left: 120px; top: 70px; width: 1360px; height: 880px; background: #1e1e1e; }
+  #vscode .titlebar { background: #2b2b2b; color: #9a9a9a; font-size: 13px; justify-content: space-between; }
+  #vscode .body { display: flex; height: calc(100% - 40px); }
+  .activity { width: 52px; background: #181818; }
+  .explorer { width: 300px; background: #181818; border-right: 1px solid #111; color: #cfcfcf; font-size: 13px; padding: 12px 0; }
+  .explorer .h { padding: 6px 18px; font-size: 11.5px; font-weight: 700; letter-spacing: .06em; color: #9a9a9a; }
+  .srow { display: flex; align-items: center; gap: 9px; padding: 6px 18px; white-space: nowrap; }
+  .srow .d { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+  .srow .n { color: #e6e6e6; }
+  .srow .s { color: #8a8a8a; font-size: 12px; }
+  .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .tabs { height: 42px; background: #252526; display: flex; }
+  .vtab { display: flex; align-items: center; gap: 8px; padding: 0 18px; color: #9da0a8; font-size: 14px; border-right: 1px solid #1a1a1a; white-space: nowrap; }
+  .vtab.on { background: #1e1e1e; color: #fff; border-top: 2px solid #4c8dff; }
+  .vtab .ic { width: 14px; height: 12px; border: 1.5px solid currentColor; border-radius: 2px; opacity: .7; }
+  .term { flex: 1; padding: 22px 26px; font: 14px/1.6 "SF Mono", ui-monospace, Menlo, monospace; color: #cfcfcf; }
+  .term .c1 { color: #d97757; } .term .c2 { color: #7fd1ff; } .term .c3 { color: #8a8f9a; } .term .ok { color: #34c759; }
+  .term .prompt { margin-top: 18px; border-top: 1px solid #333; padding-top: 12px; color: #fff; }
+  .caret { display: inline-block; width: 9px; height: 18px; background: #fff; vertical-align: -3px; }
+  .statusbar { height: 26px; background: #0e639c; color: #fff; font-size: 12px; display: flex; align-items: center; gap: 14px; padding: 0 14px; }
+
+  /* editor app for the computer-use clip */
+  #editor { left: 260px; top: 110px; width: 1080px; height: 780px; background: #fffdf8; }
+  #editor .titlebar { background: #f4f1ea; color: #555; font-size: 13px; }
+  #editor .doc { padding: 50px 70px; font: 30px/1.55 "NY", ui-serif, Georgia, serif; color: #1f1e1d; white-space: pre-wrap; }
+
+  /* overlays from the app */
+  #edge { position: absolute; inset: 0; pointer-events: none; z-index: 70; border-radius: 0; }
+  #ring { position: absolute; inset: 0; pointer-events: none; z-index: 71; box-shadow: inset 0 0 0 5px #ff453a, inset 0 0 26px rgba(255,69,58,.55); opacity: 0; }
+  #pills { position: absolute; left: 0; top: 44px; width: 1600px; display: flex; flex-direction: column; align-items: center; gap: 9px; z-index: 80; }
+  .pill { width: 520px; height: 58px; border-radius: 29px; background: #050506; display: flex; align-items: center; gap: 12px; padding: 0 9px 0 18px; color: #fff; }
+  .pill .dot { width: 11px; height: 11px; border-radius: 50%; flex: none; }
+  .pill .txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .pill .nm { font: 650 15px/1.15 -apple-system; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pill .nm .pen { opacity: .45; font-size: 12px; margin-left: 6px; }
+  .pill .ds { font: 550 13px/1.15 -apple-system; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pill .lb { font: 700 13px/1 -apple-system; white-space: nowrap; }
+  .pill .btns { display: flex; gap: 7px; }
+  .pill .b { width: 34px; height: 34px; border-radius: 50%; background: rgba(255,255,255,.13); display: flex; align-items: center; justify-content: center; }
+  .pill .b svg { width: 15px; height: 15px; fill: none; stroke: #fff; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+  .pill .b.go svg { stroke: #000; }
+  .summary { height: 32px; padding: 0 18px; border-radius: 16px; background: #050506; color: #fff; font: 700 14px/32px -apple-system; }
+
+  /* menu bar list */
+  #list { position: absolute; left: 1080px; top: 42px; width: 470px; background: #1c1c20; border-radius: 16px; padding: 14px; z-index: 90;
+          box-shadow: 0 24px 60px rgba(0,0,0,.35), 0 0 0 1px rgba(255,255,255,.08); color: #fff; opacity: 0; transform-origin: 80% 0; }
+  #list .hd { font: 700 13px/1 -apple-system; color: rgba(255,255,255,.55); padding: 2px 6px 12px; display: flex; justify-content: space-between; }
+  .lrow { display: flex; align-items: center; gap: 11px; padding: 11px 12px; border-radius: 10px; background: rgba(255,255,255,.05); margin-bottom: 7px; }
+  .lrow .d { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+  .lrow .t { flex: 1; min-width: 0; }
+  .lrow .n { font: 650 14px/1.2 -apple-system; }
+  .lrow .x { font: 550 12.5px/1.25 -apple-system; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lrow .a { font: 600 12px/1 -apple-system; color: rgba(255,255,255,.45); }
+
+  /* lock screen for the away clip */
+  #lock { position: absolute; inset: 0; z-index: 95; background: radial-gradient(120% 90% at 50% 30%, #3b3530, #15120f); color: #fff; display: flex; flex-direction: column; align-items: center; padding-top: 220px; opacity: 0; }
+  #lock .time { font: 200 120px/1 -apple-system; letter-spacing: -2px; }
+  #lock .date { font: 500 22px/1 -apple-system; opacity: .8; margin-top: 18px; }
+
+  /* cursor + click */
+  #cursor { position: absolute; z-index: 100; width: 26px; height: 34px; transform-origin: 0 0; }
+  #ripple { position: absolute; z-index: 99; width: 46px; height: 46px; margin: -23px 0 0 -23px; border-radius: 50%; border: 3px solid rgba(255,255,255,.9); opacity: 0; }
+
+  /* caption, outside the camera */
+  #caption { position: absolute; left: 0; right: 0; bottom: 34px; display: flex; justify-content: center; z-index: 200; pointer-events: none; }
+  #caption span { font: 500 30px/1.2 "NY", ui-serif, Georgia, serif; color: #1f1e1d; background: rgba(250,249,245,.94);
+                  padding: 14px 26px; border-radius: 16px; box-shadow: 0 12px 34px rgba(60,35,20,.18); letter-spacing: -.2px; }
+</style>
+</head>
+<body>
+<div id="viewport"><div id="stage"></div></div>
+<div id="caption"><span></span></div>
+<script src="promo.js"></script>
+</body>
+</html>

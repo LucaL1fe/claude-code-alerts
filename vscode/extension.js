@@ -140,11 +140,9 @@ function updateStatus() {
 async function gotoSession(s) {
   if (!s) return;
   const t = await findTerminal(s.shellPid);
-  if (t) {
-    t.show(false);
-  }
-  // Let the app mark it seen and, if the terminal lives in another window, bring that window up.
-  send({ kind: 'goto', shellPid: s.shellPid });
+  if (t) t.show(false);
+  // Found here: the app only marks it seen. Elsewhere: the app brings that window up.
+  send({ kind: 'goto', shellPid: s.shellPid, focused: !!t });
 }
 
 // Development helper for demos and tests: opens an editor terminal running a command.

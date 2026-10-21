@@ -149,7 +149,15 @@ final class Store: ObservableObject {
         case "settings": Actions.shared.openSettings()
         case "vscodeHello", "vscodeState": handleVSCode(msg, conn)
         case "goto":
-            if let pid = msg.shellPid, let s = sessions.values.first(where: { $0.shellPid == pid }) { goTo(s.id) }
+            if let pid = msg.shellPid, let s = sessions.values.first(where: { $0.shellPid == pid }) {
+                if msg.focused == true {
+                    // The VS Code window already showed the tab itself.
+                    markSeen(s.id)
+                    changed()
+                } else {
+                    goTo(s.id)
+                }
+            }
         case "debug": handleDebug(msg)
         default: break
         }
