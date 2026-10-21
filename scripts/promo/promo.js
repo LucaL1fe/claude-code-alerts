@@ -206,7 +206,7 @@ function cursor(t, path, clicks = []) {
 }
 function camera(t, frames) {
   const c = kf(t, frames);
-  stage.style.transform = `translate(${640 - c.x * c.z}px, ${400 - c.y * c.z}px) scale(${c.z})`;
+  stage.style.transform = `translate(${innerWidth / 2 - c.x * c.z}px, ${innerHeight / 2 - c.y * c.z}px) scale(${c.z})`;
 }
 function caption(t, caps) {
   let text = '';
@@ -224,7 +224,9 @@ function caption(t, caps) {
 }
 
 // whole desktop view and the pill area, in stage coordinates
-const FULL = { x: 800, y: 500, z: 0.8 };
+// 16:10 (README) shows the whole stage; 16:9 (YouTube) keeps the menu bar and crops the bottom.
+const WIDE = innerWidth / innerHeight > 1.7;
+const FULL = WIDE ? { x: 800, y: 450, z: 0.8 } : { x: 800, y: 500, z: 0.8 };
 const PILL = { x: 800, y: 140, z: 1.45 };
 
 // ---------- clips ----------
@@ -480,6 +482,68 @@ const CLIPS = {
       caption(t, [{ at: 0.2, to: 2.6, text: 'Just ask Claude.' }, { at: 2.7, to: 4.2, text: 'It renames its own tab…' }, { at: 4.9, to: 8.2, text: '…and pings you when it needs you.' }]);
     },
   },
+
+  intro: {
+    duration: 3.2,
+    build() {
+      add(document.body, `<div id="brand" style="position:absolute;inset:0;z-index:400;display:flex;flex-direction:column;align-items:center;justify-content:center;background:radial-gradient(120% 90% at 50% 20%,#F6E7D8,#EBD5C3 55%,#D9B9A3)">
+        <div class="g" style="display:grid;grid-template-columns:34px 34px;gap:8px;margin-bottom:34px"><i style="width:34px;height:34px;border-radius:9px;background:#34C759;display:block"></i><i style="width:34px;height:34px;border-radius:9px;background:#FF9F0A;display:block"></i><i style="width:34px;height:34px;border-radius:9px;background:#BF5AF2;display:block"></i><i style="width:34px;height:34px;border-radius:9px;background:#4C8DFF;display:block"></i></div>
+        <div class="h" style="font:500 76px/1.05 'NY',ui-serif,Georgia,serif;color:#1f1e1d;letter-spacing:-1.5px">Claude Code Alerts</div>
+        <div class="s" style="font:500 26px/1.4 var(--sans);color:#6b6964;margin-top:20px">Know which Claude Code agent is done, or needs you.</div></div>`);
+    },
+    render(t) {
+      const b = $('#brand');
+      b.style.opacity = 1 - eprog(t, 2.7, 3.2);
+      $('#brand .g').style.transform = `scale(${0.6 + 0.4 * spring(prog(t, 0.05, 0.8))})`;
+      $('#brand .h').style.opacity = eprog(t, 0.25, 0.7);
+      $('#brand .h').style.transform = `translateY(${(1 - out(prog(t, 0.25, 0.9))) * 18}px)`;
+      $('#brand .s').style.opacity = eprog(t, 0.6, 1.1);
+    },
+  },
+
+  outro: {
+    duration: 5.0,
+    build() {
+      add(document.body, `<div id="brand" style="position:absolute;inset:0;z-index:400;display:flex;flex-direction:column;align-items:center;justify-content:center;background:radial-gradient(120% 90% at 50% 20%,#F6E7D8,#EBD5C3 55%,#D9B9A3)">
+        <div class="k" style="font:600 16px/1 var(--sans);letter-spacing:.14em;text-transform:uppercase;color:#d97757;margin-bottom:18px">Free · open source · macOS</div>
+        <div class="h" style="font:500 64px/1.05 'NY',ui-serif,Georgia,serif;color:#1f1e1d;letter-spacing:-1px">Claude Code Alerts</div>
+        <div class="c" style="margin-top:34px;font:500 19px/1 'SF Mono',ui-monospace,Menlo,monospace;color:#f2efe8;background:#1f1e1d;padding:18px 26px;border-radius:14px">curl -fsSL https://raw.githubusercontent.com/LucaL1fe/claude-code-alerts/main/install.sh | bash</div>
+        <div class="u" style="margin-top:26px;font:600 24px/1 var(--sans);color:#1f1e1d">github.com/LucaL1fe/claude-code-alerts</div></div>`);
+    },
+    render(t) {
+      for (const [sel, a] of [['.k', 0.1], ['.h', 0.3], ['.c', 0.7], ['.u', 1.1]]) {
+        const e = $('#brand ' + sel);
+        e.style.opacity = eprog(t, a, a + 0.45);
+        e.style.transform = `translateY(${(1 - out(prog(t, a, a + 0.6))) * 16}px)`;
+      }
+    },
+  },
+
+  thumb: {
+    duration: 0,
+    build() {
+      menubar('Chrome');
+      browser();
+      overlays();
+      add(document.body, `<div style="position:absolute;left:0;right:0;bottom:0;height:300px;z-index:399;background:linear-gradient(to bottom, rgba(240,238,230,0), #F0EEE6 38%)"></div>`);
+      add(document.body, `<div id="thumbtext" style="position:absolute;left:0;right:0;bottom:40px;z-index:400;text-align:center">
+        <div style="display:inline-block;font:800 26px/1 var(--sans);letter-spacing:.14em;text-transform:uppercase;color:#fff;background:#d97757;padding:9px 16px;border-radius:9px;margin-bottom:14px">Claude Code</div>
+        <div style="font:850 100px/0.98 var(--sans);letter-spacing:-3px;color:#14130f">Which agent is done?</div></div>`);
+    },
+    render() {
+      menubarApp('Chrome');
+      renderPills(9, [
+        { state: 'input', name: 'payments', text: 'Allow Bash: npm run migrate', at: 0 },
+        { state: 'review', name: 'landing-page', text: 'Plan ready · pricing section in 3 steps', at: 0 },
+        { state: 'done', name: 'checkout-refactor', text: 'Validation added · all 3 tests pass', at: 0 },
+      ]);
+      edge(9, []);
+      setIcon('input', 3);
+      camera(9, [[0, { x: 800, y: 360 / 1.72, z: 1.72 }]]);
+      $('#cursor').style.opacity = 0;
+      $('#browser').style.filter = 'blur(2px)';
+    },
+  },
 };
 
 function order(s) { return { input: 0, review: 1, error: 2, done: 3 }[s] ?? 9; }
@@ -503,6 +567,14 @@ clip.build();
 window.DURATION = clip.duration + 1.2;
 // Title card for the first 1.3 s, then the feature label stays in the corner.
 const T = TITLES[clipName];
+if (!T) {
+  // intro, outro and the thumbnail have no feature card
+  $('#titlecard').style.display = 'none';
+  $('#label').style.display = 'none';
+  $('#caption').style.display = 'none';
+  window.DURATION = clip.duration;
+  window.render = (t) => clip.render(t);
+} else {
 $('#titlecard .k').textContent = 'Claude Code Alerts';
 $('#titlecard .h').textContent = T.head;
 $('#titlecard .s').textContent = T.sub;
@@ -514,4 +586,5 @@ window.render = (t) => {
   $('#titlecard .h').style.transform = `translateY(${(1 - out(clamp(t / 0.6))) * 14}px)`;
   $('#label').style.opacity = eprog(t, 1.35, 1.7);
 };
+}
 window.render(0);
