@@ -11,7 +11,7 @@ const { chromium } = require('playwright');
 
 const FPS = 30;
 const what = process.argv[2] || 'video';
-const CLIPS = ['intro', 'hero', 'menubar', 'tabs', 'sessions', 'snooze', 'mac', 'talk', 'outro'];
+const CLIPS = ['intro', 'hero', 'menubar', 'tabs', 'sessions', 'snooze', 'mac', 'talk', 'outro', 'end'];
 const out = path.join(here, 'out', 'yt');
 mkdirSync(out, { recursive: true });
 
@@ -25,7 +25,8 @@ if (what === 'thumb') {
   await page.evaluate(() => window.render(0));
   await page.screenshot({ path: path.join(out, 'thumbnail.png') });
 } else {
-  for (const clip of CLIPS) {
+  const only = process.argv.slice(3);
+  for (const clip of only.length ? only : CLIPS) {
     const dir = path.join(out, clip);
     rmSync(dir, { recursive: true, force: true });
     mkdirSync(dir, { recursive: true });

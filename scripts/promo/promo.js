@@ -519,6 +519,25 @@ const CLIPS = {
     },
   },
 
+  end: {
+    duration: 4.6,
+    build() {
+      const gh = '<svg viewBox="0 0 16 16" width="44" height="44" aria-hidden="true"><path fill="#1f1e1d" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>';
+      add(document.body, `<div id="brand" style="position:absolute;inset:0;z-index:400;display:flex;flex-direction:column;align-items:center;justify-content:center;background:radial-gradient(120% 90% at 50% 20%,#F6E7D8,#EBD5C3 55%,#D9B9A3)">
+        <div class="h" style="font:500 92px/1 'NY',ui-serif,Georgia,serif;color:#1f1e1d;letter-spacing:-2px">Free &amp; open source</div>
+        <div class="u" style="margin-top:44px;display:flex;align-items:center;gap:18px;background:#fffaf3;border-radius:20px;padding:20px 30px;box-shadow:0 18px 50px rgba(60,35,20,.18)">${gh}
+          <span style="font:650 34px/1 var(--sans);color:#1f1e1d;letter-spacing:-.3px">github.com/LucaL1fe/claude-code-alerts</span></div>
+        <div class="s" style="margin-top:30px;font:500 22px/1.4 var(--sans);color:#6b6964">MIT licensed · Star it, try it, build it with us.</div></div>`);
+    },
+    render(t) {
+      for (const [sel, a] of [['.h', 0.1], ['.u', 0.45], ['.s', 0.85]]) {
+        const e = $('#brand ' + sel);
+        e.style.opacity = eprog(t, a, a + 0.45);
+        e.style.transform = `translateY(${(1 - out(prog(t, a, a + 0.6))) * 16}px)` + (sel === '.u' ? ` scale(${0.96 + 0.04 * spring(prog(t, a, a + 0.8))})` : '');
+      }
+    },
+  },
+
   thumb: {
     duration: 0,
     build() {

@@ -9,7 +9,7 @@ import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 YT = os.path.join(HERE, "out", "yt")
-CLIPS = ["intro", "hero", "menubar", "tabs", "sessions", "snooze", "mac", "talk", "outro"]
+CLIPS = ["intro", "hero", "menubar", "tabs", "sessions", "snooze", "mac", "talk", "outro", "end"]
 FPS = 30
 XF = 0.3  # crossfade length (s)
 music = sys.argv[1]
