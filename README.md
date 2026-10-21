@@ -1,7 +1,7 @@
 # Claude Code Alerts
 
 **macOS notifications for Claude Code in VS Code.** Know which session is done, needs your permission or has a plan
-ready, even while you are on Reddit, and jump straight to its exact VS Code terminal tab with one click.
+ready, even while you are in another app, and jump straight to its exact VS Code terminal tab with one click.
 
 <p align="center">
   <img src="docs/media/hero.webp" alt="A Claude Code session finishes while you browse: a pill names the session, one click opens its VS Code tab" width="900">
@@ -42,10 +42,16 @@ most urgent item and shows how many are waiting. Click a row to open it.
 ### Your tabs show who is waiting
 
 Each session's terminal tab gets a colored dot: 🟢 done, 🟠 needs you, 🟣 plan ready, 🔴 error. Once you have looked
-at it, it goes back to Claude's own title. The **Claude Sessions** view in the Explorer and the status bar show the
-same at a glance.
+at it, it goes back to Claude's own title.
 
 <p align="center"><img src="docs/media/tabs.webp" alt="VS Code terminal tabs get colored dots as sessions finish, need you or have a plan ready" width="900"></p>
+
+### Every session at a glance
+
+The **Claude Sessions** view in VS Code's Explorer lists every running Claude session with its live state and what it
+is doing, most urgent first. Click one and you are in its terminal. The status bar shows how many are waiting.
+
+<p align="center"><img src="docs/media/sessions.webp" alt="The Claude Sessions view in VS Code updates live; a click opens the session that needs permission" width="900"></p>
 
 ### Not now? Snooze it. Away? Nothing gets lost
 

@@ -73,16 +73,19 @@ function setIcon(state, count) {
 
 function browser() {
   return add(stage, `<div class="win" id="browser">
-    <div class="titlebar"><div class="dots"><i></i><i></i><i></i></div><div class="tab">r/ProgrammerHumor</div></div>
-    <div class="url"><span>reddit.com/r/ProgrammerHumor</span></div>
-    <div class="feed">
-      <div class="banner"></div>
-      <div class="sub"><div class="logo">&lt;/&gt;</div><h1>r/ProgrammerHumor</h1></div>
-      <div class="post"><div class="meta">u/compiles_first_try · 3h</div><h2>Me waiting for Claude to finish</h2>
-        <div class="meme"><div class="top">Claude: "I'll just run the tests"</div>
-          <div class="pic"><div>Me, checking the terminal every 30 seconds</div><div>Me, with Claude Code Alerts</div></div></div></div>
-      <div class="side"><b>r/ProgrammerHumor</b><br>For anything funny related to programming and software development.</div>
-    </div></div>`);
+    <div class="titlebar"><div class="dots"><i></i><i></i><i></i></div><div class="tab">Pricing page · spec</div></div>
+    <div class="url"><span>docs.demo-shop.dev/pricing-spec</span></div>
+    <div class="docs">
+      <div class="nav"><div class="h">PROJECT</div><div>Roadmap</div><div class="on">Pricing page · spec</div><div>Checkout</div><div>Release notes</div>
+        <div class="h">TEAM</div><div>Design review</div><div>Launch plan</div></div>
+      <div class="page"><h1>Pricing page</h1><div class="sub">Spec · updated today</div>
+        <h2>Goal</h2><p>Three clear plans, one recommended. Visitors should understand the difference in five seconds.</p>
+        <div class="tbl"><div>Free<b>$0</b></div><div>Pro<b>$9</b></div><div>Team<b>$29</b></div></div>
+        <h2>Tasks</h2>
+        <div class="chk"><i class="on"></i>Checkout validation</div>
+        <div class="chk"><i></i>Pricing section on the landing page</div>
+        <div class="chk"><i></i>Database migration for plans</div>
+      </div></div></div>`);
 }
 
 function vscode(tabs, sessions, term) {
@@ -101,7 +104,7 @@ function setTabs(tabs) {
   $('#tabs').innerHTML = tabs.map((t) => `<div class="vtab${t.on ? ' on' : ''}" style="${t.style || ''}"><span class="ic"></span>${t.title}</div>`).join('');
 }
 function setSessions(list) {
-  $('#sess').innerHTML = list.map((s) => `<div class="srow"><span class="d" style="background:${COL[s.state]}"></span><span class="n">${s.name}</span><span class="s">${s.label || LABEL[s.state] || s.state}</span></div>`).join('');
+  $('#sess').innerHTML = list.map((s) => `<div class="srow${s.on ? ' on' : ''}"><span class="d" style="background:${COL[s.state]}"></span><span class="n">${s.name}</span><span class="s">${s.label || LABEL[s.state] || s.state}</span></div>`).join('');
 }
 function spinner(t) { return '✻✽✶✳✢·'[Math.floor(t * 8) % 6]; }
 
@@ -165,24 +168,41 @@ function edge(t, flares) {
   $('#edge').style.boxShadow = s;
   if (!s) $('#edge').style.opacity = 0;
 }
+// Click targets are measured from the real elements, in stage coordinates, so the cursor tip lands exactly on them.
+const TARGET = {};
+function center(sel) {
+  const e = document.querySelector(sel);
+  if (!e || !e.offsetWidth) return null;
+  let x = 0, y = 0, n = e;
+  while (n && n !== stage) { x += n.offsetLeft; y += n.offsetTop; n = n.offsetParent; }
+  return { x: x + e.offsetWidth / 2, y: y + e.offsetHeight / 2 };
+}
+function resolve(v) {
+  if (!v.sel) return v;
+  const c = center(v.sel);
+  if (c) TARGET[v.sel] = c;
+  const p = TARGET[v.sel] || { x: v.x ?? 800, y: v.y ?? 500 };
+  return { x: p.x + (v.dx || 0), y: p.y + (v.dy || 0) };
+}
 function cursor(t, path, clicks = []) {
-  const p = kf(t, path);
-  $('#cursor').style.left = p.x + 'px';
-  $('#cursor').style.top = p.y + 'px';
+  const p = kf(t, path.map(([tt, v]) => [tt, resolve(v)]));
+  // the arrow's tip is at (2, 2) inside the 26x34 svg
+  $('#cursor').style.left = p.x - 2 + 'px';
+  $('#cursor').style.top = p.y - 2 + 'px';
   let press = 1;
   let rip = 0;
-  let rp = null;
+  let k = 0;
   for (const c of clicks) {
     const a = t - c;
     if (a >= -0.08 && a <= 0.12) press = 0.86;
-    if (a >= 0 && a <= 0.5) { rip = 1 - a / 0.5; rp = { k: a / 0.5 }; }
+    if (a >= 0 && a <= 0.5) { rip = 1 - a / 0.5; k = a / 0.5; }
   }
   $('#cursor').style.transform = `scale(${press})`;
   const r = $('#ripple');
-  r.style.left = p.x + 3 + 'px';
-  r.style.top = p.y + 3 + 'px';
+  r.style.left = p.x + 'px';
+  r.style.top = p.y + 'px';
   r.style.opacity = rip;
-  r.style.transform = rp ? `scale(${0.4 + rp.k * 1.1})` : 'scale(0.4)';
+  r.style.transform = `scale(${0.4 + k * 1.1})`;
 }
 function camera(t, frames) {
   const c = kf(t, frames);
@@ -237,8 +257,8 @@ const CLIPS = {
         { title: `${sp} payments` },
       ]);
       camera(t, [[0, FULL], [1.35, FULL], [2.3, PILL], [3.2, { x: 860, y: 112, z: 1.7 }], [3.8, { x: 860, y: 112, z: 1.7 }], [4.6, FULL], [5.6, FULL], [6.5, { x: 640, y: 160, z: 1.7 }], [7.6, { x: 640, y: 160, z: 1.7 }]]);
-      cursor(t, [[0, { x: 900, y: 720 }], [2.4, { x: 940, y: 520 }], [3.55, { x: 1037, y: 100 }], [4.4, { x: 1037, y: 100 }], [6.4, { x: 560, y: 150 }]], [sw]);
-      caption(t, [{ at: 0.1, to: 2.2, text: 'Four Claude sessions. You are on Reddit.' }, { at: 2.2, to: 4.3, text: 'The second one is done, you know it.' }, { at: 4.6, to: 7.6, text: 'One click: the exact terminal tab.' }]);
+      cursor(t, [[0, { x: 900, y: 720 }], [2.4, { x: 940, y: 520 }], [3.55, { sel: '#pills .b.go', x: 1037, y: 100 }], [4.4, { sel: '#pills .b.go', x: 1037, y: 100 }], [6.4, { sel: '.vtab:nth-child(2)', x: 560, y: 150 }]], [sw]);
+      caption(t, [{ at: 0.1, to: 2.2, text: 'Four Claude sessions are working. You are writing the spec.' }, { at: 2.2, to: 4.3, text: 'One finishes, and you know it right away.' }, { at: 4.6, to: 7.6, text: 'One click: the exact terminal tab.' }]);
     },
   },
 
@@ -270,7 +290,7 @@ const CLIPS = {
       $('#row0 .btns').style.display = openK > 0.5 ? 'flex' : 'none';
       $('#row0 .more').style.maxHeight = openK * 20 + 'px';
       camera(t, [[0, FULL], [1.9, FULL], [2.6, PILL], [3.3, { x: 1190, y: 60, z: 1.55 }], [4.3, { x: 1260, y: 200, z: 1.45 }], [7.2, { x: 1290, y: 210, z: 1.5 }]]);
-      cursor(t, [[0, { x: 760, y: 760 }], [2.7, { x: 1000, y: 420 }], [3.4, { x: 1110, y: 10 }], [4.4, { x: 1110, y: 10 }], [4.85, { x: 1260, y: 140 }], [5.9, { x: 1260, y: 140 }], [6.5, { x: 1514, y: 128 }]], [3.48, 4.9, 6.6]);
+      cursor(t, [[0, { x: 760, y: 760 }], [2.7, { x: 1000, y: 420 }], [3.4, { sel: '#mbicon', x: 1110, y: 17 }], [4.4, { sel: '#mbicon', x: 1110, y: 17 }], [4.85, { sel: '#row0 .n', x: 1220, y: 120 }], [5.9, { sel: '#row0 .n', x: 1220, y: 120 }], [6.5, { sel: '#row0 .btns > span:last-child', x: 1514, y: 128 }]], [3.48, 4.9, 6.6]);
       caption(t, [{ at: 0.2, to: 3.2, text: 'Three sessions want you. Most urgent first.' }, { at: 3.4, to: 7.2, text: 'Everything waiting, in one list.' }]);
     },
   },
@@ -305,8 +325,51 @@ const CLIPS = {
       ]);
       $('#sbcount').textContent = ['', '● 1 Claude', '● 2 Claude', '● 3 Claude'][[1.2, 2.2, 3.2].filter((a) => t >= a).length];
       camera(t, [[0, { x: 760, y: 420, z: 0.95 }], [0.9, { x: 580, y: 215, z: 1.5 }], [3.9, { x: 580, y: 215, z: 1.5 }], [4.6, { x: 560, y: 260, z: 1.25 }], [6.6, { x: 560, y: 260, z: 1.25 }]]);
-      cursor(t, [[0, { x: 900, y: 700 }], [4.2, { x: 700, y: 420 }], [4.85, { x: 560, y: 158 }], [6.6, { x: 560, y: 158 }]], [5.0]);
+      cursor(t, [[0, { x: 900, y: 700 }], [4.2, { x: 700, y: 420 }], [4.85, { sel: '.vtab:nth-child(1)', x: 560, y: 158 }], [6.6, { sel: '.vtab:nth-child(1)', x: 560, y: 158 }]], [5.0]);
       caption(t, [{ at: 0.3, to: 4.4, text: 'Every tab shows who is waiting.' }, { at: 4.6, to: 6.6, text: 'Looked at it? Back to normal.' }]);
+    },
+  },
+
+  sessions: {
+    duration: 6.6,
+    build() {
+      menubar('Code');
+      vscode([], [], '');
+      overlays();
+    },
+    render(t) {
+      menubarApp('Code');
+      const sp = spinner(t);
+      const clickAt = 4.4;
+      const list = [
+        { name: 'payments', state: t >= 2.0 ? 'input' : 'working', since: 2.0 },
+        { name: 'landing-page', state: t >= 2.9 ? 'review' : 'working', since: 2.9 },
+        { name: 'checkout-refactor', state: t >= 1.1 ? 'done' : 'working', since: 1.1 },
+        { name: 'release-notes', state: 'working', since: 0 },
+        { name: 'docs-update', state: 'idle', since: 0 },
+      ].sort((a, b) => order2(a.state) - order2(b.state));
+      const detail = { input: 'Allow Bash: npm run migrate', review: 'Plan ready · 3 steps', done: 'All 3 tests pass', working: 'Working…', idle: '' };
+      setSessions(list.map((x) => ({ name: x.name, state: x.state, on: t >= clickAt && x.name === 'payments',
+        label: `${LABEL[x.state] || x.state} · ${t - x.since < 1 || x.since === 0 ? 'now' : 'now'}${detail[x.state] ? ' · ' + detail[x.state] : ''}` })));
+      const title = (st, n) => (st === 'working' ? `${sp} ${n}` : st === 'idle' ? `✳ ${n}` : `${DOT[st]} ${n}`);
+      const S = Object.fromEntries(list.map((x) => [x.name, x.state]));
+      const onPay = t >= clickAt;
+      setTabs([
+        { title: title(S['release-notes'], 'release-notes'), on: !onPay },
+        { title: title(S['checkout-refactor'], 'checkout-refactor') },
+        { title: title(onPay ? 'input' : S.payments, 'payments'), on: onPay },
+        { title: title(S['landing-page'], 'landing-page') },
+      ]);
+      $('#term').innerHTML = onPay
+        ? `<div class="c1">✻ Claude Code</div><div class="c3">&gt; migrate the plans table</div><br><div class="c2">● Bash(npm run migrate)</div>
+           <div style="margin-top:14px;border:1px solid #FF9F0A;border-radius:8px;padding:12px 14px;color:#fff">Allow Claude to run <b>npm run migrate</b>?<br>
+           <span style="color:#FF9F0A">❯ 1. Yes</span><br>  2. No, tell Claude what to do</div>`
+        : `<div class="c1">✻ Claude Code</div><div class="c3">&gt; write the release notes</div><br><div class="c2">● Read(CHANGELOG.md)</div><div class="c3">  ⎿ ${sp} Working…</div>`;
+      const waiting = list.filter((x) => ['input', 'review', 'done', 'error'].includes(x.state)).length;
+      $('#sbcount').textContent = waiting ? `● ${waiting} Claude` : '';
+      camera(t, [[0, { x: 760, y: 440, z: 0.95 }], [0.8, { x: 330, y: 390, z: 2.0 }], [4.0, { x: 330, y: 390, z: 2.0 }], [4.9, { x: 720, y: 330, z: 1.15 }], [6.6, { x: 720, y: 330, z: 1.15 }]]);
+      cursor(t, [[0, { x: 640, y: 700 }], [3.2, { x: 420, y: 520 }], [4.15, { sel: '#sess .srow:nth-child(1) .n', x: 260, y: 345 }], [6.6, { sel: '#sess .srow:nth-child(1) .n', x: 260, y: 345 }]], [clickAt]);
+      caption(t, [{ at: 0.2, to: 4.2, text: 'Every session, live, in the sidebar.' }, { at: 4.4, to: 6.6, text: 'Click one, and you are there.' }]);
     },
   },
 
@@ -328,7 +391,7 @@ const CLIPS = {
       const lk = Math.min(eprog(t, lockIn, lockIn + 0.4), 1 - eprog(t, lockOut, lockOut + 0.35));
       $('#lock').style.opacity = lk;
       camera(t, [[0, FULL], [0.9, PILL], [1.5, { x: 905, y: 112, z: 1.85 }], [2.6, { x: 905, y: 112, z: 1.85 }], [3.2, FULL], [5.0, FULL], [5.8, { x: 800, y: 150, z: 1.4 }], [7.4, { x: 800, y: 150, z: 1.4 }]]);
-      cursor(t, [[0, { x: 820, y: 700 }], [1.6, { x: 900, y: 420 }], [2.2, { x: 906, y: 100 }], [2.7, { x: 906, y: 100 }], [3.3, { x: 980, y: 520 }]], [clickAt]);
+      cursor(t, [[0, { x: 820, y: 700 }], [1.6, { x: 900, y: 420 }], [2.2, { sel: '#pills .pill .b:nth-child(2)', x: 906, y: 100 }], [2.7, { sel: '#pills .pill .b:nth-child(2)', x: 906, y: 100 }], [3.3, { x: 980, y: 520 }]], [clickAt]);
       $('#cursor').style.opacity = t > lockIn && t < lockOut + 0.4 ? 0 : 1;
       caption(t, [{ at: 0.3, to: 3.0, text: 'Not now? Snooze it for 5 minutes.' }, { at: 3.3, to: 5.0, text: 'You step away…' }, { at: 5.1, to: 7.4, text: '…nothing gets lost.' }]);
     },
@@ -391,6 +454,7 @@ const CLIPS = {
 };
 
 function order(s) { return { input: 0, review: 1, error: 2, done: 3 }[s] ?? 9; }
+function order2(s) { return { input: 0, review: 1, error: 2, done: 3, mac: 4, working: 5, idle: 6 }[s] ?? 9; }
 function menubarApp(name) { $('#menubar .left b:nth-child(2)').textContent = name; }
 function listHTML() {
   const row = (id, state, name, text, ago) => `<div class="lrow" id="${id}" style="border:1.5px solid transparent">
@@ -403,8 +467,22 @@ function listHTML() {
     ${row('row2', 'done', 'checkout-refactor', 'Validation added · all 3 tests pass', 'now')}</div>`;
 }
 
-const clip = CLIPS[new URLSearchParams(location.search).get('clip') || 'hero'];
+const TITLES = {"hero": {"label": "Done alerts", "head": "Know the moment a session is done", "sub": "A pill names the session. One click takes you to its terminal tab."}, "several": {"label": "Priorities", "head": "Several sessions, most urgent first", "sub": "Needs you, plan ready, done: sorted for you, all in one list."}, "tabs": {"label": "Tab dots", "head": "Your tabs show who is waiting", "sub": "🟢 done · 🟠 needs you · 🟣 plan ready · 🔴 error"}, "sessions": {"label": "Claude Sessions view", "head": "Every session at a glance", "sub": "Live state of all your Claude sessions, right in VS Code."}, "snooze": {"label": "Snooze & away", "head": "Snooze it. Step away. Nothing gets lost.", "sub": "Later brings it back in 5 minutes. Away? One summary when you return."}, "mac": {"label": "Computer use", "head": "See when Claude uses your Mac", "sub": "A red ring while it drives, a green glow when it is yours again."}, "talk": {"label": "Ask Claude", "head": "Just ask Claude", "sub": "It renames its own tab and pings you when it needs you."}};
+const clipName = new URLSearchParams(location.search).get('clip') || 'hero';
+const clip = CLIPS[clipName];
 clip.build();
-window.DURATION = clip.duration;
-window.render = (t) => clip.render(t);
+window.DURATION = clip.duration + 1.2;
+// Title card for the first 1.3 s, then the feature label stays in the corner.
+const T = TITLES[clipName];
+$('#titlecard .k').textContent = 'Claude Code Alerts';
+$('#titlecard .h').textContent = T.head;
+$('#titlecard .s').textContent = T.sub;
+$('#label b').textContent = '· ' + T.label;
+window.render = (t) => {
+  clip.render(Math.max(0, t - 1.2));
+  const card = 1 - eprog(t, 1.15, 1.55);
+  $('#titlecard').style.opacity = card;
+  $('#titlecard .h').style.transform = `translateY(${(1 - out(clamp(t / 0.6))) * 14}px)`;
+  $('#label').style.opacity = eprog(t, 1.35, 1.7);
+};
 window.render(0);

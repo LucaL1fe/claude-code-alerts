@@ -11,7 +11,7 @@ const require = createRequire(process.env.PLAYWRIGHT_FROM || import.meta.url);
 const { chromium } = require('playwright');
 
 const FPS = Number(process.env.FPS || 25);
-const clips = process.argv.slice(2).length ? process.argv.slice(2) : ['hero', 'several', 'tabs', 'snooze', 'mac', 'talk'];
+const clips = process.argv.slice(2).length ? process.argv.slice(2) : ['hero', 'several', 'tabs', 'sessions', 'snooze', 'mac', 'talk'];
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 2 });
 

@@ -37,28 +37,28 @@
   .dots i { width: 12px; height: 12px; border-radius: 50%; display: block; }
   .dots i:nth-child(1) { background: #ff5f57 } .dots i:nth-child(2) { background: #febc2e } .dots i:nth-child(3) { background: #28c840 }
 
-  /* browser with a meme feed */
-  #browser { left: 190px; top: 80px; width: 1220px; height: 860px; background: #1a1a1b; }
-  #browser .titlebar { background: #2b2b2e; }
-  #browser .tab { margin-left: 18px; background: #3a3a3e; color: #e8e8e8; padding: 7px 16px; border-radius: 8px 8px 0 0; font-size: 13px; align-self: flex-end; }
-  #browser .url { height: 42px; background: #3a3a3e; display: flex; align-items: center; padding: 0 18px; }
-  #browser .url span { background: #1f1f22; color: #c9c9cc; font-size: 14px; padding: 7px 16px; border-radius: 16px; width: 520px; }
-  .feed { padding: 0 0 0 0; color: #d7dadc; }
-  .banner { height: 120px; background: repeating-linear-gradient(-30deg, #ff4500 0 26px, #ff5a1f 26px 52px); }
-  .sub { display: flex; align-items: center; gap: 18px; padding: 0 60px; margin-top: -34px; }
-  .sub .logo { width: 84px; height: 84px; border-radius: 50%; background: #ff4500; border: 4px solid #1a1a1b; display: flex; align-items: center; justify-content: center; color: #fff; font: 800 30px/1 ui-monospace, monospace; }
-  .sub h1 { font-size: 34px; margin: 34px 0 0; color: #fff; }
-  .post { margin: 34px 60px 0 60px; width: 640px; background: #1f1f21; border-radius: 16px; padding: 18px 22px 22px; }
-  .post .meta { font-size: 13px; color: #8a8c90; }
-  .post h2 { font-size: 21px; margin: 8px 0 14px; color: #f1f1f1; }
-  .meme { height: 470px; border-radius: 12px; background: #fff; color: #111; display: flex; flex-direction: column; overflow: hidden; }
-  .meme .top { padding: 22px 26px; font: 600 30px/1.18 var(--sans); }
-  .meme .pic { flex: 1; display: grid; grid-template-columns: 1fr 1fr; border-top: 2px solid #111; }
-  .meme .pic div { display: flex; align-items: center; justify-content: center; text-align: center; font: 800 26px/1.15 var(--sans); padding: 16px; }
-  .meme .pic div:first-child { background: #F2E9DF; border-right: 2px solid #111; }
-  .meme .pic div:last-child { background: #DCEBD7; }
-  .side { position: absolute; right: 60px; top: 312px; width: 360px; background: #1f1f21; border-radius: 16px; padding: 18px 22px; color: #c9c9cc; font-size: 14px; line-height: 1.5; }
-  .side b { color: #fff; font-size: 15px; }
+  /* browser with a docs page (the "other app" you are working in) */
+  #browser { left: 190px; top: 80px; width: 1220px; height: 860px; background: #ffffff; }
+  #browser .titlebar { background: #ececec; }
+  #browser .tab { margin-left: 18px; background: #ffffff; color: #333; padding: 7px 16px; border-radius: 8px 8px 0 0; font-size: 13px; align-self: flex-end; }
+  #browser .url { height: 42px; background: #ffffff; border-bottom: 1px solid #e6e6e6; display: flex; align-items: center; padding: 0 18px; }
+  #browser .url span { background: #f1f1f1; color: #555; font-size: 14px; padding: 7px 16px; border-radius: 16px; width: 520px; }
+  .docs { display: flex; height: calc(100% - 82px); }
+  .docs .nav { width: 250px; background: #f7f7f5; border-right: 1px solid #ececea; padding: 26px 18px; font-size: 14px; color: #555; }
+  .docs .nav div { padding: 7px 10px; border-radius: 7px; }
+  .docs .nav .on { background: #ebeae6; color: #1f1e1d; font-weight: 600; }
+  .docs .nav .h { font-size: 11.5px; font-weight: 700; letter-spacing: .06em; color: #999; margin-top: 18px; }
+  .docs .page { flex: 1; padding: 54px 80px; color: #2b2a28; }
+  .docs .page h1 { font: 600 40px/1.15 "NY", ui-serif, Georgia, serif; margin: 0 0 10px; color: #1f1e1d; }
+  .docs .page .sub { font-size: 15px; color: #8a8885; margin-bottom: 34px; }
+  .docs .page h2 { font-size: 20px; margin: 30px 0 12px; }
+  .docs .page p { font-size: 17px; line-height: 1.6; margin: 0 0 14px; color: #3d3c39; max-width: 760px; }
+  .docs .page .chk { display: flex; gap: 12px; align-items: center; font-size: 17px; margin: 10px 0; color: #3d3c39; }
+  .docs .page .chk i { width: 18px; height: 18px; border-radius: 5px; border: 2px solid #c9c7c2; display: block; }
+  .docs .page .chk i.on { background: #d97757; border-color: #d97757; }
+  .docs .page .tbl { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 18px; max-width: 760px; }
+  .docs .page .tbl div { border: 1px solid #e7e5e0; border-radius: 12px; padding: 16px; font-size: 15px; color: #555; }
+  .docs .page .tbl b { display: block; font-size: 22px; color: #1f1e1d; margin-top: 6px; }
 
   /* VS Code */
   #vscode { left: 120px; top: 70px; width: 1360px; height: 880px; background: #1e1e1e; }
@@ -71,6 +71,7 @@
   .srow .d { width: 10px; height: 10px; border-radius: 50%; flex: none; }
   .srow .n { color: #e6e6e6; }
   .srow .s { color: #8a8a8a; font-size: 12px; }
+  .srow.on { background: #37373d; }
   .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
   .tabs { height: 42px; background: #252526; display: flex; }
   .vtab { display: flex; align-items: center; gap: 8px; padding: 0 18px; color: #9da0a8; font-size: 14px; border-right: 1px solid #1a1a1a; white-space: nowrap; }
@@ -124,6 +125,20 @@
   #cursor { position: absolute; z-index: 100; width: 26px; height: 34px; transform-origin: 0 0; }
   #ripple { position: absolute; z-index: 99; width: 46px; height: 46px; margin: -23px 0 0 -23px; border-radius: 50%; border: 3px solid rgba(255,255,255,.9); opacity: 0; }
 
+  /* feature title card (start of each clip) and the feature label (whole clip), outside the camera */
+  #titlecard { position: absolute; inset: 0; z-index: 300; display: flex; flex-direction: column; align-items: center; justify-content: center;
+               background: rgba(240,238,230,.86); backdrop-filter: blur(14px); pointer-events: none; }
+  #titlecard .k { font: 600 15px/1 var(--sans); letter-spacing: .14em; text-transform: uppercase; color: #d97757; margin-bottom: 18px; }
+  #titlecard .h { font: 500 56px/1.1 "NY", ui-serif, Georgia, serif; color: #1f1e1d; letter-spacing: -1px; text-align: center; max-width: 1000px; }
+  #titlecard .s { font: 500 20px/1.4 var(--sans); color: #6b6964; margin-top: 18px; text-align: center; max-width: 820px; }
+  #label { position: absolute; left: 28px; top: 26px; z-index: 210; display: flex; align-items: center; gap: 10px; pointer-events: none;
+           background: rgba(250,249,245,.94); border-radius: 999px; padding: 9px 16px 9px 12px; box-shadow: 0 10px 28px rgba(60,35,20,.16); }
+  #label .g { display: grid; grid-template-columns: 7px 7px; gap: 2px; }
+  #label .g i { width: 7px; height: 7px; border-radius: 2px; display: block; background: #d97757; }
+  #label .g i + i { opacity: .55; }
+  #label span { font: 600 15px/1 var(--sans); color: #1f1e1d; }
+  #label b { font: 500 15px/1 var(--sans); color: #8a8885; }
+
   /* caption, outside the camera */
   #caption { position: absolute; left: 0; right: 0; bottom: 34px; display: flex; justify-content: center; z-index: 200; pointer-events: none; }
   #caption span { font: 500 30px/1.2 "NY", ui-serif, Georgia, serif; color: #1f1e1d; background: rgba(250,249,245,.94);
@@ -133,6 +148,8 @@
 <body>
 <div id="viewport"><div id="stage"></div></div>
 <div id="caption"><span></span></div>
+<div id="label"><span class="g"><i></i><i></i><i></i><i></i></span><span>Claude Code Alerts</span><b></b></div>
+<div id="titlecard"><div class="k"></div><div class="h"></div><div class="s"></div></div>
 <script src="promo.js"></script>
 </body>
 </html>
