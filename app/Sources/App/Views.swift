@@ -2,6 +2,14 @@ import SwiftUI
 
 // MARK: - Small parts
 
+/// Makes the window holding this view the key window, so a text field in a non-activating panel gets the keyboard.
+struct MakeKeyWindow: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView { NSView() }
+    func updateNSView(_ view: NSView, context: Context) {
+        DispatchQueue.main.async { view.window?.makeKey() }
+    }
+}
+
 struct IconButton: View {
     let symbol: String
     let help: String
@@ -46,15 +54,17 @@ struct ActionButtons: View {
 }
 
 /// Session name with a pencil; click the pencil to rename in place.
+/// `context` keeps two fields for the same session (pill, list row, session row) from editing at once.
 struct NameField: View {
     let session: Session?
     var fontSize: CGFloat = 13
+    var context = "pill"
     @ObservedObject private var store = Store.shared
     @State private var draft = ""
     @FocusState private var focused: Bool
 
     var body: some View {
-        if let session, store.editingSessionId == session.id {
+        if let session, store.editingSessionId == "\(context):\(session.id)" {
             HStack(spacing: 6) {
                 TextField("Name", text: $draft)
                     .textFieldStyle(.plain)
@@ -63,15 +73,15 @@ struct NameField: View {
                     .padding(.horizontal, 6).padding(.vertical, 2)
                     .background(RoundedRectangle(cornerRadius: 5).fill(Color.white.opacity(0.12)))
                     .focused($focused)
+                    .background(MakeKeyWindow())
                     .onSubmit { commit(session) }
-                    .onExitCommand { store.editingSessionId = nil }
+                    .onExitCommand { Rename.end() }
                     .frame(minWidth: 120)
                 Text("Enter saves").font(.system(size: fontSize * 0.75, weight: .semibold)).foregroundColor(.white.opacity(0.5))
             }
             .onAppear {
                 draft = session.name
-                NSApp.activate(ignoringOtherApps: true)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { focused = true }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { focused = true }
             }
         } else {
             HStack(spacing: 5) {
@@ -80,7 +90,7 @@ struct NameField: View {
                     .foregroundColor(.white)
                     .lineLimit(1).truncationMode(.tail)
                 if let session {
-                    Button { store.editingSessionId = session.id } label: {
+                    Button { Rename.begin("\(context):\(session.id)") } label: {
                         Image(systemName: "pencil").font(.system(size: fontSize * 0.75, weight: .semibold))
                             .foregroundColor(.white.opacity(0.5))
                     }
@@ -93,7 +103,25 @@ struct NameField: View {
 
     private func commit(_ session: Session) {
         store.rename(session.id, to: draft)
-        store.editingSessionId = nil
+        Rename.end()
+    }
+}
+
+/// Renaming needs the keyboard: our app comes to the front for it and hands it back afterwards.
+enum Rename {
+    private static var previousApp: NSRunningApplication?
+
+    static func begin(_ key: String) {
+        let front = NSWorkspace.shared.frontmostApplication
+        if front?.bundleIdentifier != Bundle.main.bundleIdentifier { previousApp = front }
+        Store.shared.editingSessionId = key
+        NSApp.activate()
+    }
+
+    static func end() {
+        Store.shared.editingSessionId = nil
+        previousApp?.activate()
+        previousApp = nil
     }
 }
 
@@ -177,13 +205,13 @@ struct AlertRow: View {
         HStack(alignment: open ? .top : .center, spacing: 9) {
             Circle().fill(c).frame(width: 8, height: 8).padding(.top, open ? 5 : 0)
             VStack(alignment: .leading, spacing: 2) {
-                NameField(session: session, fontSize: 12.5)
+                NameField(session: session, fontSize: 12.5, context: "row")
                 Text(alert.text)
                     .font(.system(size: 11.5, weight: .medium)).foregroundColor(c)
                     .lineLimit(open ? 4 : 1).truncationMode(.tail)
                     .fixedSize(horizontal: false, vertical: open)
                 if open {
-                    Text("\(alert.created.ago) ago · \(alert.status == .snoozed ? "snoozed" : alert.kind.label)")
+                    Text("\(alert.created.agoLong) · \(alert.status == .snoozed ? "snoozed" : alert.kind.label)")
                         .font(.system(size: 10.5, weight: .medium)).foregroundColor(.white.opacity(0.45))
                 }
             }
@@ -217,7 +245,7 @@ struct SessionRow: View {
         HStack(spacing: 9) {
             Circle().fill(session.state.color).frame(width: 8, height: 8)
             VStack(alignment: .leading, spacing: 1) {
-                NameField(session: session, fontSize: 12)
+                NameField(session: session, fontSize: 12, context: "session")
                 Text(session.detail.isEmpty ? session.state.label : session.detail)
                     .font(.system(size: 11, weight: .medium)).foregroundColor(session.state.color).lineLimit(1)
             }
@@ -238,11 +266,22 @@ struct SessionRow: View {
     }
 }
 
+private struct HeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
+}
+
 struct AlertList: View {
     @ObservedObject private var store = Store.shared
     @State private var expanded: UUID?
+    @State private var contentHeight: CGFloat = 200
     var width: CGFloat = 380
     var showFooter = true
+    var onClose: () -> Void = {}
+
+    private var maxHeight: CGFloat {
+        (OverlayController.mainScreen.visibleFrame.height - 140)
+    }
 
     var body: some View {
         let waiting = store.waiting.filter { $0.kind != .mac && $0.kind != .free }
@@ -258,21 +297,28 @@ struct AlertList: View {
                 }
             }
             .padding(.horizontal, 4)
-            ForEach(waiting) { AlertRow(alert: $0, expanded: $expanded) }
-            if !muted.isEmpty {
-                Text("Muted · \(muted.count)").font(.system(size: 11, weight: .bold)).foregroundColor(.white.opacity(0.45))
-                    .padding(.horizontal, 4).padding(.top, 4)
-                ForEach(muted) { AlertRow(alert: $0, expanded: $expanded, dim: true) }
+            ScrollView(.vertical, showsIndicators: contentHeight > maxHeight) {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(waiting) { AlertRow(alert: $0, expanded: $expanded) }
+                    if !muted.isEmpty {
+                        Text("Muted · \(muted.count)").font(.system(size: 11, weight: .bold)).foregroundColor(.white.opacity(0.45))
+                            .padding(.horizontal, 4).padding(.top, 4)
+                        ForEach(muted) { AlertRow(alert: $0, expanded: $expanded, dim: true) }
+                    }
+                    if !store.sessions.isEmpty {
+                        Text("Sessions · \(store.sessions.count)").font(.system(size: 11, weight: .bold)).foregroundColor(.white.opacity(0.45))
+                            .padding(.horizontal, 4).padding(.top, 6)
+                        ForEach(store.sortedSessions) { SessionRow(session: $0) }
+                    }
+                }
+                .background(GeometryReader { g in Color.clear.preference(key: HeightKey.self, value: g.size.height) })
             }
-            if !store.sessions.isEmpty {
-                Text("Sessions · \(store.sessions.count)").font(.system(size: 11, weight: .bold)).foregroundColor(.white.opacity(0.45))
-                    .padding(.horizontal, 4).padding(.top, 6)
-                ForEach(store.sortedSessions) { SessionRow(session: $0) }
-            }
+            .frame(height: min(contentHeight, maxHeight))
+            .onPreferenceChange(HeightKey.self) { contentHeight = $0 }
             if showFooter {
                 Divider().background(Color.white.opacity(0.15)).padding(.top, 4)
                 HStack {
-                    Button("Settings…") { Actions.shared.openSettings() }.buttonStyle(.plain)
+                    Button("Settings…") { onClose(); Actions.shared.openSettings() }.buttonStyle(.plain)
                     Spacer()
                     Button("Quit") { NSApp.terminate(nil) }.buttonStyle(.plain)
                 }
@@ -298,15 +344,25 @@ struct SettingsView: View {
             Picker("Later button", selection: $settings.laterMinutes) {
                 ForEach([1, 5, 10, 15, 30, 60], id: \.self) { Text($0 == 60 ? "1 h" : "\($0) min").tag($0) }
             }
+            Picker("Fold pills into the notch after", selection: $settings.foldSeconds) {
+                Text("Never").tag(0)
+                Text("10 s").tag(10)
+                Text("30 s").tag(30)
+                Text("1 min").tag(60)
+                Text("5 min").tag(300)
+            }
             Toggle("Sound when something happens", isOn: $settings.sound)
             Toggle("Voice: says who and what happened", isOn: $settings.voice)
             Toggle("Show when Claude uses your Mac (red ring)", isOn: $settings.macRing)
             Toggle("Notch band with session dots", isOn: $settings.notchBand)
             Picker("Count me as away after", selection: $settings.awayMinutes) {
-                ForEach([1, 3, 5, 10], id: \.self) { Text("\($0) min").tag($0) }
+                ForEach([1, 3, 5, 10, 30, 60], id: \.self) { Text($0 == 60 ? "1 h" : "\($0) min").tag($0) }
             }
             Toggle("Open at login", isOn: $login)
-                .onChange(of: login) { _, v in Actions.shared.launchAtLogin = v }
+                .onChange(of: login) { _, v in
+                    UserDefaults.standard.set(v, forKey: "openAtLogin")
+                    Actions.shared.launchAtLogin = v
+                }
             Text("Claude Code Alerts · community project, not affiliated with Anthropic")
                 .font(.footnote).foregroundColor(.secondary)
         }

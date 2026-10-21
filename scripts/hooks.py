@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Adds or removes the Claude Code Alerts hooks in ~/.claude/settings.json (keeps everything else, makes a backup)."""
-import json, os, shutil, sys, time
+import glob, json, os, shutil, sys, time
 
 HOME = os.path.expanduser("~")
 SETTINGS = os.path.join(HOME, ".claude", "settings.json")
@@ -60,6 +60,10 @@ def main():
         backup = f"{path}.bak-claude-code-alerts-{time.strftime('%Y%m%d-%H%M%S')}"
         shutil.copy2(path, backup)
         print(f"  backup: {backup}")
+        # Keep the very first backup (your settings before the first install) and the two newest.
+        backups = sorted(glob.glob(f"{path}.bak-claude-code-alerts-*"))
+        for old in backups[1:-2]:
+            os.remove(old)
     strip(settings)
     if mode == "install":
         hooks = settings.setdefault("hooks", {})

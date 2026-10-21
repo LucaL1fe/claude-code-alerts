@@ -21,11 +21,11 @@ final class Store: ObservableObject {
     @Published var summaryCount = 0
     @Published var macSessionId: String?
     @Published var editingSessionId: String?
-
-    var demoMode = false
+    @Published var demoMode = false
     var debugAway = false
     var windows: [UUID: VSWindow] = [:]
     var lastMacUse = Date.distantPast
+    private var lastPillIds: [UUID] = []
     private var saveWork: DispatchWorkItem?
     private let settings = AppSettings.shared
 
@@ -37,16 +37,29 @@ final class Store: ObservableObject {
 
     // MARK: - Derived
 
-    /// Alerts that ask for you, most urgent first (not muted).
-    var waiting: [AlertItem] {
-        alerts.filter { $0.status != .muted }.sorted(by: Self.order)
+    /// In demo mode only demo and debug sessions are shown (for recordings without private data).
+    private func visible(_ sessionId: String) -> Bool {
+        guard demoMode else { return true }
+        if sessionId.hasPrefix("debug-") { return true }
+        return (sessions[sessionId]?.cwd ?? "").contains("claude-code-alerts-demo")
     }
 
-    var muted: [AlertItem] { alerts.filter { $0.status == .muted }.sorted(by: Self.order) }
+    /// Alerts that ask for you, most urgent first (not muted).
+    var waiting: [AlertItem] {
+        alerts.filter { $0.status != .muted && visible($0.sessionId) }.sorted(by: Self.order)
+    }
+
+    var muted: [AlertItem] { alerts.filter { $0.status == .muted && visible($0.sessionId) }.sorted(by: Self.order) }
 
     /// Pills on screen right now.
     var pills: [AlertItem] {
-        alerts.filter { $0.status == .active && !$0.queued }.sorted(by: Self.order)
+        let fold = TimeInterval(settings.foldSeconds)
+        let now = Date()
+        return alerts.filter { a in
+            guard a.status == .active, !a.queued, visible(a.sessionId) else { return false }
+            if fold > 0, a.kind != .mac, a.kind != .free, now.timeIntervalSince(a.shownAt ?? a.created) > fold { return false }
+            return true
+        }.sorted(by: Self.order)
     }
 
     var mostUrgent: AState? { waiting.first?.kind }
@@ -58,7 +71,7 @@ final class Store: ObservableObject {
     func session(_ id: String) -> Session? { sessions[id] }
 
     var sortedSessions: [Session] {
-        sessions.values.sorted { a, b in
+        sessions.values.filter { visible($0.id) }.sorted { a, b in
             a.state.urgency != b.state.urgency ? a.state.urgency < b.state.urgency : a.updated > b.updated
         }
     }
@@ -76,6 +89,13 @@ final class Store: ObservableObject {
         sessions = saved.sessions.filter { $0.key.hasPrefix("debug-") || Proc.isAlive($0.value.claudePid) }
         alerts = saved.alerts.filter { sessions[$0.sessionId] != nil && $0.kind != .mac && $0.kind != .free }
         for i in alerts.indices { alerts[i].queued = false }
+    }
+
+    /// Writes the state right away (on quit).
+    func saveNow() {
+        saveWork?.cancel()
+        let saved = Saved(sessions: sessions, alerts: alerts.filter { $0.kind != .mac && $0.kind != .free })
+        if let data = try? JSONEncoder().encode(saved) { try? data.write(to: stateURL, options: .atomic) }
     }
 
     private func save() {
@@ -207,32 +227,36 @@ final class Store: ObservableObject {
         case "PostToolUse":
             let tool = msg.toolName.map { $0.hasPrefix("mcp__") ? String($0.split(separator: "_").last ?? "") : $0 } ?? ""
             let st = sessions[id]?.state
+            // Claude went on, so a permission prompt or plan was answered. Alerts Claude sent on purpose stay.
             if st == .input || st == .review {
-                alerts.removeAll { $0.sessionId == id && ($0.kind == .input || $0.kind == .review) }
-                setState(id, .working, "Working · \(tool)")
+                alerts.removeAll { $0.sessionId == id && ($0.kind == .input || $0.kind == .review) && $0.source != "notify" }
+                if !alerts.contains(where: { $0.sessionId == id && $0.source == "notify" }) { setState(id, .working, "Working · \(tool)") }
             } else if st == .idle || st == .working {
                 setState(id, .working, "Working · \(tool)")
             }
             if msg.toolName?.hasPrefix("mcp__computer-use__") == true { macUsed(id) }
         case "Stop":
             if macSessionId == id { endMac(showFree: true) }
-            raise(id, .done, msg.text?.isEmpty == false ? msg.text! : "Finished")
+            raise(id, .done, msg.text?.isEmpty == false ? msg.text! : "Finished", source: event)
         case "StopFailure":
             if macSessionId == id { endMac(showFree: true) }
-            raise(id, .error, msg.text ?? "Stopped with an error")
+            raise(id, .error, msg.text ?? "Stopped with an error", source: event)
         case "Notification":
             let type = msg.notificationType ?? ""
             if ["permission_prompt", "elicitation_dialog", "agent_needs_input", "elicitation_url_dialog"].contains(type) {
-                raise(id, .input, msg.text ?? "Claude needs you")
+                raise(id, .input, msg.text ?? "Claude needs you", source: event)
             }
         case "PermissionRequest":
-            raise(id, .input, msg.text ?? "Claude asks for permission")
+            // Plans and questions have their own, better alert (PreToolUse).
+            if msg.toolName != "ExitPlanMode" && msg.toolName != "AskUserQuestion" {
+                raise(id, .input, msg.text ?? "Claude asks for permission", source: event)
+            }
         case "PreToolUse":
             let tool = msg.toolName ?? ""
             if tool == "ExitPlanMode" {
-                raise(id, .review, msg.text?.isEmpty == false ? "Plan ready · " + msg.text! : "Plan ready to review")
+                raise(id, .review, msg.text?.isEmpty == false ? "Plan ready · " + msg.text! : "Plan ready to review", source: event)
             } else if tool == "AskUserQuestion" {
-                raise(id, .input, msg.text ?? "Claude has a question")
+                raise(id, .input, msg.text ?? "Claude has a question", source: event)
             } else if tool.hasPrefix("mcp__computer-use__") {
                 startMac(id, what: "Using your Mac")
             }
@@ -250,7 +274,7 @@ final class Store: ObservableObject {
         if demoMode && !isDemoSession(msg) { return }
         guard let id = upsert(msg) else { return }
         let kind = AState(rawValue: msg.state ?? "input") ?? .input
-        raise(id, kind, msg.text ?? "Claude needs you")
+        raise(id, kind, msg.text ?? "Claude needs you", source: "notify")
         changed()
     }
 
@@ -268,14 +292,26 @@ final class Store: ObservableObject {
     // MARK: - Rules
 
     /// Creates an alert unless you are already looking at that session.
-    func raise(_ id: String, _ kind: AState, _ text: String) {
+    /// One alert per session; a new event only replaces it when it is at least as urgent, so "done" never hides
+    /// "needs you", and Claude's generic follow-up messages never hide a specific question or a plan.
+    func raise(_ id: String, _ kind: AState, _ text: String, source: String = "") {
+        if let existing = alerts.first(where: { $0.sessionId == id && $0.kind != .mac && $0.kind != .free }) {
+            var keep = existing.kind.urgency < kind.urgency
+            if existing.kind == .review && kind == .input && (source == "Notification" || source == "PermissionRequest") { keep = true }
+            if existing.kind == kind && source == "Notification" && Date().timeIntervalSince(existing.created) < 300 { keep = true }
+            if keep {
+                setState(id, existing.kind, existing.text)
+                return
+            }
+        }
         setState(id, kind, text)
         guard let s = sessions[id] else { return }
         if isLookingAt(s) { return }
-        // One alert per session: the newest replaces an older one of the same session.
-        alerts.removeAll { $0.sessionId == id && $0.kind != .mac }
+        alerts.removeAll { $0.sessionId == id && $0.kind != .mac && $0.kind != .free }
         var alert = AlertItem(sessionId: id, kind: kind, text: text)
         alert.queued = away
+        alert.source = source
+        alert.shownAt = away ? nil : Date()
         alerts.append(alert)
         if !away { announce(kind, s) }
     }
@@ -321,7 +357,10 @@ final class Store: ObservableObject {
         goTo(a.sessionId)
     }
 
+    var onGoTo: (() -> Void)?
+
     func goTo(_ sessionId: String) {
+        onGoTo?()
         markSeen(sessionId)
         if let s = sessions[sessionId] { Actions.shared.goTo(s, owner: windowOwning(s.shellPid)) }
         changed()
@@ -403,11 +442,14 @@ final class Store: ObservableObject {
             if let until = alerts[i].snoozeUntil, until <= now {
                 alerts[i].status = .active
                 alerts[i].snoozeUntil = nil
+                alerts[i].shownAt = Date()
                 dirty = true
                 if !away { Actions.shared.sound(alerts[i].kind) }
             }
         }
         if macSessionId != nil, now.timeIntervalSince(lastMacUse) > 60 { endMac(showFree: true); dirty = true }
+        let pillIds = pills.map(\.id)
+        if pillIds != lastPillIds { lastPillIds = pillIds; dirty = true }
         // Drop sessions whose Claude process ended without SessionEnd.
         for (id, s) in sessions where !id.hasPrefix("debug-") && s.claudePid > 0 && !Proc.isAlive(s.claudePid) {
             sessions.removeValue(forKey: id)
@@ -424,7 +466,10 @@ final class Store: ObservableObject {
         away = value
         if !value {
             let queued = alerts.filter { $0.queued }
-            for i in alerts.indices { alerts[i].queued = false }
+            for i in alerts.indices where alerts[i].queued {
+                alerts[i].queued = false
+                alerts[i].shownAt = Date()
+            }
             if !queued.isEmpty {
                 summaryCount = queued.count
                 let top = queued.sorted(by: Self.order).first!.kind

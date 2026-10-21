@@ -20,6 +20,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menuBar = MenuBarController()
         notch = NotchController()
         overlay.onMore = { [weak self] in self?.menuBar.show() }
+        menuBar.onOpenChange = { [weak self] open in self?.overlay.listOpen = open }
+        store.onGoTo = { [weak self] in self?.menuBar.close() }
+        notch.onOpenChange = { [weak self] open in self?.overlay.listOpen = open }
 
         store.onFlare = { [weak self] kind in self?.overlay.flare(kind) }
         store.onChange = { [weak self] in self?.refresh() }
@@ -30,9 +33,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         notch.rebuild()
         refresh()
 
-        // Open at login by default (can be switched off in Settings).
-        if !UserDefaults.standard.bool(forKey: "didSetUpLogin") {
-            UserDefaults.standard.set(true, forKey: "didSetUpLogin")
+        // Open at login by default (Settings can switch it off). Registered again if the app moved.
+        UserDefaults.standard.register(defaults: ["openAtLogin": true])
+        if UserDefaults.standard.bool(forKey: "openAtLogin") && !Actions.shared.launchAtLogin {
             Actions.shared.launchAtLogin = true
         }
 
@@ -72,6 +75,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.overlay.screensChanged()
             self?.notch.rebuild()
         }
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        store.saveNow()
     }
 
     private func idleSeconds() -> Double {

@@ -184,9 +184,12 @@ final class OverlayController {
 
     // MARK: Pills
 
+    /// True while the menu bar list or the notch list is open: the pills would cover it.
+    var listOpen = false { didSet { update() } }
+
     func update() {
         let store = Store.shared
-        let show = !store.pills.isEmpty || store.summaryCount > 0
+        let show = !listOpen && (!store.pills.isEmpty || store.summaryCount > 0)
         if !show {
             pillPanel?.orderOut(nil)
             return
@@ -199,6 +202,15 @@ final class OverlayController {
             pillPanel = p
             pillHost = host
         }
+        layoutPills()
+        // SwiftUI applies the new content a moment later: measure again then.
+        DispatchQueue.main.async { [weak self] in self?.layoutPills() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in self?.layoutPills() }
+    }
+
+    private func layoutPills() {
+        let store = Store.shared
+        guard !listOpen, !store.pills.isEmpty || store.summaryCount > 0 else { return }
         guard let p = pillPanel, let host = pillHost else { return }
         host.layoutSubtreeIfNeeded()
         let size = host.fittingSize

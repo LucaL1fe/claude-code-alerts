@@ -87,6 +87,10 @@ struct AlertItem: Codable, Identifiable, Equatable {
     var snoozeUntil: Date?
     /// Arrived while you were away: no pill or sound until you are back.
     var queued = false
+    /// What raised it: a hook event name, or "notify" when Claude called `cca notify` on purpose.
+    var source: String? = nil
+    /// When its pill last appeared (for "fold pills into the notch after …").
+    var shownAt: Date? = nil
 }
 
 /// User settings (UserDefaults).
@@ -100,19 +104,27 @@ final class AppSettings: ObservableObject {
     @Published var macRing: Bool { didSet { d.set(macRing, forKey: "macRing") } }
     @Published var notchBand: Bool { didSet { d.set(notchBand, forKey: "notchBand") } }
     @Published var awayMinutes: Int { didSet { d.set(awayMinutes, forKey: "awayMinutes") } }
+    /// Seconds after which a pill folds into the notch (it stays in the list). 0 = never.
+    @Published var foldSeconds: Int { didSet { d.set(foldSeconds, forKey: "foldSeconds") } }
 
     private init() {
-        d.register(defaults: ["laterMinutes": 5, "sound": true, "voice": false, "macRing": true, "notchBand": true, "awayMinutes": 3])
+        d.register(defaults: ["laterMinutes": 5, "sound": true, "voice": false, "macRing": true, "notchBand": true, "awayMinutes": 3, "foldSeconds": 0])
         laterMinutes = d.integer(forKey: "laterMinutes")
         sound = d.bool(forKey: "sound")
         voice = d.bool(forKey: "voice")
         macRing = d.bool(forKey: "macRing")
         notchBand = d.bool(forKey: "notchBand")
         awayMinutes = d.integer(forKey: "awayMinutes")
+        foldSeconds = d.integer(forKey: "foldSeconds")
     }
 }
 
 extension Date {
+    var agoLong: String {
+        let a = ago
+        return a == "now" ? "just now" : "\(a) ago"
+    }
+
     var ago: String {
         let s = max(0, Int(Date().timeIntervalSince(self)))
         if s < 60 { return "now" }

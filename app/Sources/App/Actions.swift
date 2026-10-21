@@ -37,10 +37,35 @@ final class Actions {
                 activateVSCode()
             }
             owner.conn.send(focus)
+        } else if isPanelSession(s), let url = URL(string: "vscode://anthropic.claude-code/open?session=\(s.id)") {
+            // A session in the Claude Code panel (no terminal): Anthropic's extension focuses its tab.
+            NSWorkspace.shared.open(url)
+        } else if let app = terminalApp(of: s.shellPid), app.bundleIdentifier != "com.microsoft.VSCode" {
+            // A session in another terminal (Terminal, iTerm, Ghostty…): bring that app forward.
+            app.activate()
         } else {
             activateVSCode()
             for w in Store.shared.windows.values { w.conn.send(focus) }
         }
+    }
+
+    /// The GUI app a shell runs in: the first ancestor that is a running application.
+    private func terminalApp(of shellPid: Int32) -> NSRunningApplication? {
+        var pid = shellPid
+        for _ in 0..<10 {
+            guard pid > 1 else { return nil }
+            if let app = NSRunningApplication(processIdentifier: pid), app.activationPolicy == .regular { return app }
+            guard let info = Proc.info(pid) else { return nil }
+            pid = info.ppid
+        }
+        return nil
+    }
+
+    /// Panel sessions are started by VS Code's extension host, not by a shell in a terminal.
+    private func isPanelSession(_ s: Session) -> Bool {
+        guard s.id.count == 36, let parent = Proc.info(s.shellPid) else { return false }
+        let shells = ["zsh", "bash", "fish", "sh", "login", "tmux"]
+        return !shells.contains(parent.comm) && !parent.comm.hasPrefix("-")
     }
 
     private var codeCLI: String? {
@@ -70,7 +95,7 @@ final class Actions {
 
     func openSettings() {
         if settingsWindow == nil {
-            let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 440, height: 360), styleMask: [.titled, .closable],
+            let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 460, height: 470), styleMask: [.titled, .closable],
                              backing: .buffered, defer: false)
             w.title = "Claude Code Alerts"
             w.isReleasedWhenClosed = false

@@ -58,6 +58,7 @@ final class NotchController {
     private var hideWork: DispatchWorkItem?
     private var observer: Any?
     private let level = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 3)
+    var onOpenChange: ((Bool) -> Void)?
 
     init() {
         observer = hover.objectWillChange.sink { [weak self] _ in
@@ -90,7 +91,10 @@ final class NotchController {
             showList()
         } else {
             hideWork?.cancel()
-            let work = DispatchWorkItem { [weak self] in self?.list?.orderOut(nil) }
+            let work = DispatchWorkItem { [weak self] in
+                self?.list?.orderOut(nil)
+                self?.onOpenChange?(false)
+            }
             hideWork = work
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: work)
         }
@@ -112,11 +116,15 @@ final class NotchController {
         let top = band.frame.minY + 2
         list.setFrame(NSRect(x: band.frame.midX - size.width / 2, y: top - size.height, width: size.width, height: size.height),
                       display: true)
+        if !list.isVisible { onOpenChange?(true) }
         list.orderFrontRegardless()
     }
 
     /// Keeps the open list sized to its content.
     func update() {
-        if list?.isVisible == true { showList() }
+        if list?.isVisible == true {
+            showList()
+            DispatchQueue.main.async { [weak self] in if self?.list?.isVisible == true { self?.showList() } }
+        }
     }
 }
