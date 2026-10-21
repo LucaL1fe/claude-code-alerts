@@ -1,0 +1,99 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Thumbnails</title>
+<style>
+  @font-face { font-family: "NY"; src: url("file:///System/Library/Fonts/NewYork.ttf"); }
+  :root { --sans: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif; }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { width: 1280px; height: 720px; overflow: hidden; font-family: var(--sans); -webkit-font-smoothing: antialiased; }
+  .v { position: absolute; inset: 0; display: none; overflow: hidden; }
+  body[data-v="A"] #A, body[data-v="B"] #B, body[data-v="C"] #C { display: block; }
+
+  /* big simplified pill: dot, name, status, one action */
+  .pill { position: absolute; height: 116px; border-radius: 58px; background: #0b0b0d; display: flex; align-items: center; gap: 22px; padding: 0 18px 0 36px; }
+  .pill .d { width: 28px; height: 28px; border-radius: 50%; flex: none; }
+  .pill .n { flex: 1; font: 800 44px/1 var(--sans); color: #fff; letter-spacing: -.5px; white-space: nowrap; }
+  .pill .s { font: 800 34px/1 var(--sans); white-space: nowrap; }
+  .pill .go { width: 80px; height: 80px; border-radius: 50%; flex: none; display: flex; align-items: center; justify-content: center; }
+  .pill .go svg { width: 38px; height: 38px; fill: none; stroke: #0b0b0d; stroke-width: 3.2; stroke-linecap: round; stroke-linejoin: round; }
+
+  .badge { display: inline-flex; align-items: center; gap: 12px; font: 800 30px/1 var(--sans); letter-spacing: .1em; text-transform: uppercase; color: #fff; background: #D97757; padding: 12px 18px; border-radius: 12px; }
+  .badge i { width: 14px; height: 14px; border-radius: 4px; background: #fff; display: block; box-shadow: 18px 0 0 rgba(255,255,255,.6), 0 18px 0 rgba(255,255,255,.6), 18px 18px 0 rgba(255,255,255,.6); margin-right: 18px; margin-bottom: 18px; transform: scale(.7); }
+
+  .cursor { position: absolute; width: 74px; height: 96px; filter: drop-shadow(0 6px 10px rgba(0,0,0,.45)); }
+
+  /* A: dark, text left, glowing pills right */
+  #A { background: radial-gradient(90% 120% at 85% 30%, #3a2318 0%, #17110e 45%, #0c0b0b 100%); }
+  #A .notch { position: absolute; left: 765px; top: 0; width: 300px; height: 44px; background: #000; border-radius: 0 0 24px 24px; z-index: 2; }
+  #A .pill { width: max-content !important; transform-origin: 50% 0; left: 915px !important; }
+  #A .pill .n { margin-right: 26px; }
+  #A .head { position: absolute; left: 64px; top: 168px; width: 620px; }
+  #A h1 { font: 900 128px/0.9 var(--sans); color: #fff; letter-spacing: -4px; margin-top: 26px; }
+  #A h1 em { font-style: normal; color: #34C759; }
+
+  /* B: warm light, huge text, one giant orange pill and cursor */
+  #B { background: radial-gradient(120% 100% at 50% 0%, #FBF3EA 0%, #F2E3D3 60%, #E9CDB5 100%); }
+  #B .notch { position: absolute; left: 470px; top: 0; width: 340px; height: 48px; background: #0b0b0d; border-radius: 0 0 28px 28px; }
+  #B h1 { position: absolute; left: 0; right: 0; bottom: 52px; text-align: center; font: 900 146px/0.92 var(--sans); color: #15130f; letter-spacing: -5px; }
+  #B .badge { position: absolute; left: 50%; transform: translateX(-50%); top: 300px; }
+
+  /* C: split: four sessions on the left, one green "done", text right */
+  #C { background: #0d0d10; }
+  #C .glow { position: absolute; left: -120px; top: 80px; width: 760px; height: 560px; background: radial-gradient(closest-side, rgba(52,199,89,.28), rgba(52,199,89,0)); }
+  #C .head { position: absolute; left: 680px; top: 150px; width: 580px; }
+  #C h1 { font: 900 126px/0.9 var(--sans); color: #fff; letter-spacing: -4px; margin-top: 24px; }
+  #C h1 em { font-style: normal; color: #34C759; }
+  #C .row { position: absolute; left: 60px; width: 580px; height: 104px; border-radius: 22px; background: #1b1b20; display: flex; align-items: center; gap: 22px; padding: 0 26px; }
+  #C .row .d { width: 26px; height: 26px; border-radius: 50%; flex: none; }
+  #C .row .n { font: 800 44px/1 var(--sans); color: #8d8f98; letter-spacing: -.5px; }
+  #C .row.on { background: #0b0b0d; border: 3px solid #34C759; box-shadow: 0 0 60px rgba(52,199,89,.55); }
+  #C .row.on .n { color: #fff; }
+  #C .row .ok { margin-left: auto; font: 800 36px/1 var(--sans); color: #34C759; }
+  #C .row .wk { margin-left: auto; font: 700 30px/1 var(--sans); color: #4C8DFF; opacity: .8; }
+</style>
+</head>
+<body>
+
+<!-- A -->
+<div class="v" id="A">
+  <div style="position:absolute;left:465px;top:-90px;width:900px;height:480px;background:radial-gradient(closest-side, rgba(52,199,89,.30), rgba(52,199,89,0))"></div>
+  <div class="notch"></div>
+  <div class="head"><span class="badge"><i></i>Claude Code</span><h1>Which agent is <em>done?</em></h1></div>
+  <div class="pill" style="transform:translateX(-50%) scale(1.1);top:76px;border:4px solid #34C759;box-shadow:0 0 44px rgba(52,199,89,.6)">
+    <span class="d" style="background:#34C759"></span><span class="n">checkout</span><span class="s" style="color:#34C759">done</span>
+    <span class="go" style="background:#34C759"><svg viewBox="0 0 24 24"><path d="M5 12h13M13 6.5l5.5 5.5-5.5 5.5"/></svg></span></div>
+  <div class="pill" style="transform:translateX(-50%) scale(.88);top:254px;border:3px solid #B8730A;box-shadow:0 0 36px rgba(255,159,10,.25)">
+    <span class="d" style="background:#C27C12"></span><span class="n" style="color:#c4c4c8">payments</span><span class="s" style="color:#C98A2A">needs you</span>
+    <span class="go" style="background:#C27C12"><svg viewBox="0 0 24 24"><path d="M5 12h13M13 6.5l5.5 5.5-5.5 5.5"/></svg></span></div>
+  <div class="pill" style="transform:translateX(-50%) scale(.76);top:384px;border:3px solid #6E3A8A;box-shadow:0 0 30px rgba(191,90,242,.18)">
+    <span class="d" style="background:#7D3F9C"></span><span class="n" style="color:#8a8a90">landing</span><span class="s" style="color:#8E4FAE">plan ready</span>
+    <span class="go" style="background:#7D3F9C"><svg viewBox="0 0 24 24"><path d="M5 12h13M13 6.5l5.5 5.5-5.5 5.5"/></svg></span></div>
+  <svg class="cursor" style="left:1196px;top:160px" viewBox="0 0 26 34"><path d="M2 2 L2 27 L8.5 20.5 L13 31 L17 29.3 L12.6 19 L21.5 19 Z" fill="#fff" stroke="#000" stroke-width="2" stroke-linejoin="round"/></svg>
+</div>
+
+<!-- B -->
+<div class="v" id="B">
+  <div class="notch"></div>
+  <div class="pill" style="left:200px;top:86px;width:880px;height:150px;border-radius:75px;border:4px solid #34C759;box-shadow:0 18px 70px rgba(52,199,89,.5)">
+    <span class="d" style="background:#34C759;width:36px;height:36px"></span><span class="n" style="font-size:58px">checkout</span><span class="s" style="color:#28A745;font-size:46px">done</span>
+    <span class="go" style="background:#34C759;width:106px;height:106px"><svg viewBox="0 0 24 24" style="width:50px;height:50px"><path d="M5 12h13M13 6.5l5.5 5.5-5.5 5.5"/></svg></span></div>
+  <svg class="cursor" style="left:1010px;top:190px;width:86px;height:112px" viewBox="0 0 26 34"><path d="M2 2 L2 27 L8.5 20.5 L13 31 L17 29.3 L12.6 19 L21.5 19 Z" fill="#000" stroke="#fff" stroke-width="2" stroke-linejoin="round"/></svg>
+  <span class="badge"><i></i>Claude Code</span>
+  <h1>Which agent<br>is done?</h1>
+</div>
+
+<!-- C -->
+<div class="v" id="C">
+  <div class="glow"></div>
+  <div class="row" style="top:96px"><span class="d" style="background:#4C8DFF"></span><span class="n">landing-page</span><span class="wk">working…</span></div>
+  <div class="row on" style="top:226px"><span class="d" style="background:#34C759;width:30px;height:30px"></span><span class="n">checkout</span><span class="ok">✓ done</span></div>
+  <div class="row" style="top:356px"><span class="d" style="background:#4C8DFF"></span><span class="n">payments</span><span class="wk">working…</span></div>
+  <div class="row" style="top:486px"><span class="d" style="background:#4C8DFF"></span><span class="n">docs-update</span><span class="wk">working…</span></div>
+  <div class="head"><span class="badge"><i></i>Claude Code</span><h1>Which agent is <em>done?</em></h1></div>
+</div>
+
+<script>document.body.dataset.v = new URLSearchParams(location.search).get('v') || 'A';</script>
+</body>
+</html>
