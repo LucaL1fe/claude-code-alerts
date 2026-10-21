@@ -39,6 +39,14 @@ most urgent item and shows how many are waiting. Click a row to open it.
 
 <p align="center"><img src="docs/media/several.webp" alt="Three alerts stack by urgency; the menu bar list opens and goes to the session that needs permission" width="900"></p>
 
+### Your tabs show who is waiting
+
+Each session's terminal tab gets a colored dot: 🟢 done, 🟠 needs you, 🟣 plan ready, 🔴 error. Once you have looked
+at it, it goes back to Claude's own title. The **Claude Sessions** view in the Explorer and the status bar show the
+same at a glance.
+
+<p align="center"><img src="docs/media/tab-dots.png" alt="VS Code terminal tabs with colored dots: done, plan ready, needs you" width="760"></p>
+
 ### Not now? Snooze it. Away? Nothing gets lost
 
 The clock button brings an alert back in 5 minutes (change it in Settings). While you are away (screen locked, display
@@ -65,7 +73,8 @@ me". Claude does it, and the pill shows Claude's own words.
 | | |
 |---|---|
 | Glow + pill on every app, every desktop, full screen apps, Focus on | Menu bar icon colored by the most urgent waiting item, with a count |
-| Exact VS Code terminal tab, on the right desktop, in one click | Claude Sessions view and status bar item inside VS Code |
+| Exact VS Code terminal tab, on the right desktop, in one click | Colored dot in each terminal tab title: 🟢 🟠 🟣 🔴 |
+| Claude Sessions view and status bar item inside VS Code | Works with several VS Code windows and desktops |
 | States: working, needs you, plan ready, done, error, using your Mac | Per pill: quiet ✕, later 🕒, done ✓, go to → |
 | No alert when you are already looking at that tab | Snooze time, sound, voice and the Mac ring are separate switches |
 | Away detection with one summary when you are back | Rename sessions right in the pill (✎) or by asking Claude |
@@ -108,8 +117,10 @@ Claude Code session ──hooks──▶ cca ──socket──▶ Claude Code A
   reads the session name from the transcript.
 - **The app** (Swift, AppKit + SwiftUI) keeps the state, applies the rules (urgency, smart suppress, away, snooze) and
   draws the overlays as non-activating panels on every Space.
-- **The VS Code extension** reports which terminals each window has (by shell PID) and focuses or renames one when the
-  app asks. Clicking a pill first brings that window forward, so macOS switches to its desktop.
+- **The VS Code extension** reports which terminals each window has (by shell PID) and focuses one when the app asks.
+  Clicking a pill first brings that window forward, so macOS switches to its desktop.
+- **Tab dots** are a terminal title (OSC 2) the app writes to the session's terminal; Claude replaces it with its own
+  spinner as soon as it works again.
 
 Everything stays on your Mac. No network, no analytics.
 
@@ -128,9 +139,9 @@ cca status                                   # all sessions and connected VS Cod
 
 ## Settings
 
-Click the menu bar icon › Settings: Later button (1 min to 1 h, default 5 min) · fold pills into the notch after a
-while (default never) · sound · voice (says who and what happened, off by default) · red ring when Claude uses your Mac ·
-when you count as away · open at login.
+Click the menu bar icon › Settings: Later button (1 min to 1 h, default 5 min) · fold pills away after a while (default
+never) · colored dots in tab titles · sound · voice (says who and what happened, off by default) · red ring when Claude
+uses your Mac · when you count as away · open at login.
 
 ## FAQ
 

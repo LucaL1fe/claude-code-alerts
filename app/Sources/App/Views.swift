@@ -351,6 +351,7 @@ struct SettingsView: View {
                 Text("1 min").tag(60)
                 Text("5 min").tag(300)
             }
+            Toggle("Colored dot in the terminal tab title (🟢 🟠 🟣 🔴)", isOn: $settings.tabDots)
             Toggle("Sound when something happens", isOn: $settings.sound)
             Toggle("Voice: says who and what happened", isOn: $settings.voice)
             Toggle("Show when Claude uses your Mac (red ring)", isOn: $settings.macRing)

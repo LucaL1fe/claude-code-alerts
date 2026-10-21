@@ -116,8 +116,11 @@ final class Store: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: work)
     }
 
+    let tabTitles = TabTitles()
+
     private func changed() {
         save()
+        tabTitles.sync(Array(sessions.values), enabled: settings.tabDots)
         onChange?()
     }
 
@@ -230,6 +233,7 @@ final class Store: ObservableObject {
         case "UserPromptSubmit":
             // You are at this session: its reminders are answered.
             alerts.removeAll { $0.sessionId == id }
+            tabTitles.forget(id)
             if var s = sessions[id] { s.notifyPending = false; sessions[id] = s }
             setState(id, .working, "Working")
         case "PostToolUse":
@@ -324,7 +328,11 @@ final class Store: ObservableObject {
         }
         setState(id, kind, text)
         guard let s = sessions[id] else { return }
-        if isLookingAt(s) { return }
+        if isLookingAt(s) {
+            // You see it already: a finished session needs no dot or alert.
+            if kind == .done { setState(id, .idle) }
+            return
+        }
         alerts.removeAll { $0.sessionId == id && $0.kind != .mac && $0.kind != .free }
         var alert = AlertItem(sessionId: id, kind: kind, text: text)
         alert.queued = away
@@ -394,12 +402,8 @@ final class Store: ObservableObject {
         guard var s = sessions[sessionId], !clean.isEmpty else { return }
         s.customName = clean
         sessions[sessionId] = s
-        if let owner = windowOwning(s.shellPid) {
-            var m = Msg(kind: "renameTerminal")
-            m.shellPid = s.shellPid
-            m.name = clean
-            owner.conn.send(m)
-        }
+        // The tab follows through its title (see TabTitles), so the colored dots keep working.
+        tabTitles.forget(sessionId)
         changed()
     }
 
@@ -516,7 +520,8 @@ final class Store: ObservableObject {
         if w.focused, let active = w.terminals.first(where: { $0.active }),
            let s = sessions.values.first(where: { $0.shellPid == active.pid }),
            NSWorkspace.shared.frontmostApplication?.bundleIdentifier == "com.microsoft.VSCode" {
-            if alerts.contains(where: { $0.sessionId == s.id && $0.kind != .mac && $0.status == .active }) {
+            if alerts.contains(where: { $0.sessionId == s.id && $0.kind != .mac && $0.status == .active })
+                || s.state == .done || s.state == .error {
                 markSeen(s.id)
                 changed()
             }

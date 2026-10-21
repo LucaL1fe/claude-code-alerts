@@ -91,14 +91,6 @@ async function onMessage(m) {
   if (m.kind === 'focusTerminal') {
     const t = await findTerminal(m.shellPid);
     if (t) t.show(false);
-  } else if (m.kind === 'renameTerminal') {
-    const t = await findTerminal(m.shellPid);
-    if (!t) return;
-    const previous = vscode.window.activeTerminal;
-    t.show(true);
-    await vscode.commands.executeCommand('workbench.action.terminal.renameWithArg', { name: m.name });
-    if (previous && previous !== t) previous.show(true);
-    reportSoon();
   } else if (m.kind === 'sessions') {
     sessions = (m.sessions || []).slice().sort((a, b) =>
       (URGENCY[a.state] ?? 9) - (URGENCY[b.state] ?? 9) || b.updated - a.updated);
@@ -161,8 +153,18 @@ function devTerminal(q) {
   if (!vscode.workspace.getConfiguration('claudeCodeAlerts').get('devTerminals')) return;
   const cwd = workspacePath();
   const cmd = q.get('cmd') || '';
+  if (q.get('type')) {
+    // Like typing the command into a normal shell (shell integration sees it, as in real use).
+    const t = vscode.window.createTerminal({ cwd, location: vscode.TerminalLocation.Editor,
+      env: { CLAUDECODE: null, CLAUDE_CODE_CHILD_SESSION: null, CLAUDE_CODE_ENTRYPOINT: null, CLAUDE_CODE_SSE_PORT: null } });
+    t.show(false);
+    setTimeout(() => t.sendText(q.get('type')), 1500);
+    reportSoon();
+    return;
+  }
+  // Without a name VS Code shows the title the program sets (like a normal terminal).
   const t = vscode.window.createTerminal({
-    name: q.get('name') || 'claude',
+    name: q.get('name') || undefined,
     cwd,
     location: vscode.TerminalLocation.Editor,
     shellPath: '/bin/zsh',

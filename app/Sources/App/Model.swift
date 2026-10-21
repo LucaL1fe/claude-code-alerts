@@ -133,11 +133,12 @@ final class AppSettings: ObservableObject {
     @Published var macRing: Bool { didSet { d.set(macRing, forKey: "macRing") } }
     @Published var notchBand: Bool { didSet { d.set(notchBand, forKey: "notchBand") } }
     @Published var awayMinutes: Int { didSet { d.set(awayMinutes, forKey: "awayMinutes") } }
+    @Published var tabDots: Bool { didSet { d.set(tabDots, forKey: "tabDots") } }
     /// Seconds after which a pill folds into the notch (it stays in the list). 0 = never.
     @Published var foldSeconds: Int { didSet { d.set(foldSeconds, forKey: "foldSeconds") } }
 
     private init() {
-        d.register(defaults: ["laterMinutes": 5, "sound": true, "voice": false, "macRing": true, "notchBand": false, "awayMinutes": 3, "foldSeconds": 0])
+        d.register(defaults: ["laterMinutes": 5, "sound": true, "voice": false, "macRing": true, "notchBand": false, "awayMinutes": 3, "foldSeconds": 0, "tabDots": true])
         laterMinutes = d.integer(forKey: "laterMinutes")
         sound = d.bool(forKey: "sound")
         voice = d.bool(forKey: "voice")
@@ -145,6 +146,7 @@ final class AppSettings: ObservableObject {
         notchBand = d.bool(forKey: "notchBand")
         awayMinutes = d.integer(forKey: "awayMinutes")
         foldSeconds = d.integer(forKey: "foldSeconds")
+        tabDots = d.bool(forKey: "tabDots")
     }
 }
 
