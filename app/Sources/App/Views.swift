@@ -45,8 +45,10 @@ struct ActionButtons: View {
             if alert.kind != .mac && alert.kind != .free {
                 IconButton(symbol: "clock", help: "Again in \(settings.laterMinutes) min", size: size) { Store.shared.later(alert.id) }
                 IconButton(symbol: "checkmark", help: "Done", size: size) { Store.shared.done(alert.id) }
-                IconButton(symbol: "arrow.right", help: "Go to this session", filled: alert.kind.color, size: size) {
-                    Store.shared.goTo(alert: alert.id)
+                if Store.shared.session(alert.sessionId)?.isBackground != true {
+                    IconButton(symbol: "arrow.right", help: "Go to this session", filled: alert.kind.color, size: size) {
+                        Store.shared.goTo(alert: alert.id)
+                    }
                 }
             }
         }
@@ -157,7 +159,7 @@ struct PillView: View {
         .shadow(color: c.opacity(0.5), radius: 10)
         .contentShape(Capsule())
         .onTapGesture {
-            if alert.kind != .mac && alert.kind != .free { store.goTo(alert: alert.id) }
+            if alert.kind != .mac && alert.kind != .free && session?.isBackground != true { store.goTo(alert: alert.id) }
         }
     }
 }
@@ -250,9 +252,9 @@ struct SessionRow: View {
                     .font(.system(size: 11, weight: .medium)).foregroundColor(session.state.color).lineLimit(1)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            Text("\(session.state.label) · \(session.updated.ago)")
+            Text("\(session.isBackground ? "background" : session.state.label) · \(session.updated.ago)")
                 .font(.system(size: 10.5, weight: .semibold)).foregroundColor(.white.opacity(0.45))
-            if hover {
+            if hover && !session.isBackground {
                 IconButton(symbol: "arrow.right", help: "Go to this session", filled: session.state.color, size: 20) {
                     store.goTo(session.id)
                 }
@@ -262,7 +264,7 @@ struct SessionRow: View {
         .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(hover ? 0.10 : 0.0)))
         .contentShape(Rectangle())
         .onHover { hover = $0 }
-        .onTapGesture { store.goTo(session.id) }
+        .onTapGesture { if !session.isBackground { store.goTo(session.id) } }
     }
 }
 
@@ -352,6 +354,8 @@ struct SettingsView: View {
                 Text("5 min").tag(300)
             }
             Toggle("Colored dot in the terminal tab title (🟢 🟠 🟣 🔴)", isOn: $settings.tabDots)
+            Toggle("Glow around the screen for every alert (always on for computer use)", isOn: $settings.edgeGlow)
+            Toggle("Pills for background runs (scheduled tasks, claude -p)", isOn: $settings.backgroundPills)
             Toggle("Sound when something happens", isOn: $settings.sound)
             Toggle("Voice: says who and what happened", isOn: $settings.voice)
             Toggle("Show when Claude uses your Mac (red ring)", isOn: $settings.macRing)

@@ -85,7 +85,7 @@ if [ -n "$CODE_CLI" ]; then
     fi
   fi
   if [ -s "$VSIX" ]; then
-    "$CODE_CLI" --install-extension "$VSIX" --force >/dev/null 2>&1 && ok "VS Code extension installed (reload open windows once)"
+    "$CODE_CLI" --install-extension "$VSIX" --force >/dev/null 2>&1 && ok "VS Code extension installed"
   else
     echo "  Skipped the VS Code extension (needs node/npx to package it)."
   fi
@@ -96,6 +96,14 @@ fi
 # 5. Start it.
 open "$APP"
 ok "Claude Code Alerts is running in your menu bar (four small squares)."
+
+if pgrep -xq "Code" || pgrep -fq "Visual Studio Code.app/Contents/MacOS"; then
+  printf '\n\033[1;33m┌─────────────────────────────────────────────────────────────────┐\033[0m\n'
+  printf '\033[1;33m│\033[0m  \033[1mOne last step: reload your open VS Code windows once\033[0m          \033[1;33m│\033[0m\n'
+  printf '\033[1;33m│\033[0m  In each window: Cmd+Shift+P › "Developer: Reload Window"        \033[1;33m│\033[0m\n'
+  printf '\033[1;33m│\033[0m  Your terminals and Claude sessions keep running.               \033[1;33m│\033[0m\n'
+  printf '\033[1;33m└─────────────────────────────────────────────────────────────────┘\033[0m\n'
+fi
 echo
 echo "  Try it:   $HOME_DIR/bin/cca debug event --name my-session --state done --text \"It works\""
 echo "  Settings: click the menu bar icon › Settings…"

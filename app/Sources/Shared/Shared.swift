@@ -69,6 +69,7 @@ public struct Msg: Codable {
     public var sessions: [SessionInfo]?
     public var focused: Bool?
     public var flag: Bool?
+    public var entrypoint: String?
     public var ok: Bool?
 
     public init(kind: String) { self.kind = kind }

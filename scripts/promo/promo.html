@@ -5,6 +5,8 @@
 <title>Claude Code Alerts promo</title>
 <style>
   @font-face { font-family: "NY"; src: url("file:///System/Library/Fonts/NewYork.ttf"); }
+  :root { --sans: "SF Pro Text", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, sans-serif; }
+  @font-face { font-family: "SF Pro Text"; src: url("file:///System/Library/Fonts/SFNS.ttf"); }
   * { box-sizing: border-box; }
   html, body { margin: 0; width: 1280px; height: 800px; overflow: hidden; background: #F0EEE6; }
   body { font-family: -apple-system, "SF Pro Text", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
@@ -26,7 +28,7 @@
   #mbicon .grid { display: grid; grid-template-columns: 9px 9px; gap: 2px; }
   #mbicon .grid i { width: 9px; height: 9px; border-radius: 2.5px; background: #1f1e1d; display: block; }
   #mbicon .grid i + i { opacity: .55; }
-  #mbcount { font: 700 14px/1 -apple-system; font-variant-numeric: tabular-nums; }
+  #mbcount { font: 700 14px/1 var(--sans); font-variant-numeric: tabular-nums; }
 
   /* windows */
   .win { position: absolute; border-radius: 14px; overflow: hidden; box-shadow: 0 30px 80px rgba(60,35,20,.28), 0 0 0 1px rgba(0,0,0,.08); }
@@ -50,9 +52,9 @@
   .post .meta { font-size: 13px; color: #8a8c90; }
   .post h2 { font-size: 21px; margin: 8px 0 14px; color: #f1f1f1; }
   .meme { height: 470px; border-radius: 12px; background: #fff; color: #111; display: flex; flex-direction: column; overflow: hidden; }
-  .meme .top { padding: 22px 26px; font: 600 30px/1.18 -apple-system; }
+  .meme .top { padding: 22px 26px; font: 600 30px/1.18 var(--sans); }
   .meme .pic { flex: 1; display: grid; grid-template-columns: 1fr 1fr; border-top: 2px solid #111; }
-  .meme .pic div { display: flex; align-items: center; justify-content: center; text-align: center; font: 800 26px/1.15 -apple-system; padding: 16px; }
+  .meme .pic div { display: flex; align-items: center; justify-content: center; text-align: center; font: 800 26px/1.15 var(--sans); padding: 16px; }
   .meme .pic div:first-child { background: #F2E9DF; border-right: 2px solid #111; }
   .meme .pic div:last-child { background: #DCEBD7; }
   .side { position: absolute; right: 60px; top: 312px; width: 360px; background: #1f1f21; border-radius: 16px; padding: 18px 22px; color: #c9c9cc; font-size: 14px; line-height: 1.5; }
@@ -92,31 +94,31 @@
   .pill { width: 520px; height: 58px; border-radius: 29px; background: #050506; display: flex; align-items: center; gap: 12px; padding: 0 9px 0 18px; color: #fff; }
   .pill .dot { width: 11px; height: 11px; border-radius: 50%; flex: none; }
   .pill .txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-  .pill .nm { font: 650 15px/1.15 -apple-system; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pill .nm { font: 650 15px/1.15 var(--sans); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .pill .nm .pen { opacity: .45; font-size: 12px; margin-left: 6px; }
-  .pill .ds { font: 550 13px/1.15 -apple-system; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .pill .lb { font: 700 13px/1 -apple-system; white-space: nowrap; }
+  .pill .ds { font: 550 13px/1.15 var(--sans); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pill .lb { font: 700 13px/1 var(--sans); white-space: nowrap; }
   .pill .btns { display: flex; gap: 7px; }
   .pill .b { width: 34px; height: 34px; border-radius: 50%; background: rgba(255,255,255,.13); display: flex; align-items: center; justify-content: center; }
   .pill .b svg { width: 15px; height: 15px; fill: none; stroke: #fff; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
   .pill .b.go svg { stroke: #000; }
-  .summary { height: 32px; padding: 0 18px; border-radius: 16px; background: #050506; color: #fff; font: 700 14px/32px -apple-system; }
+  .summary { height: 32px; padding: 0 18px; border-radius: 16px; background: #050506; color: #fff; font: 700 14px/32px var(--sans); }
 
   /* menu bar list */
   #list { position: absolute; left: 1080px; top: 42px; width: 470px; background: #1c1c20; border-radius: 16px; padding: 14px; z-index: 90;
           box-shadow: 0 24px 60px rgba(0,0,0,.35), 0 0 0 1px rgba(255,255,255,.08); color: #fff; opacity: 0; transform-origin: 80% 0; }
-  #list .hd { font: 700 13px/1 -apple-system; color: rgba(255,255,255,.55); padding: 2px 6px 12px; display: flex; justify-content: space-between; }
+  #list .hd { font: 700 13px/1 var(--sans); color: rgba(255,255,255,.55); padding: 2px 6px 12px; display: flex; justify-content: space-between; }
   .lrow { display: flex; align-items: center; gap: 11px; padding: 11px 12px; border-radius: 10px; background: rgba(255,255,255,.05); margin-bottom: 7px; }
   .lrow .d { width: 10px; height: 10px; border-radius: 50%; flex: none; }
   .lrow .t { flex: 1; min-width: 0; }
-  .lrow .n { font: 650 14px/1.2 -apple-system; }
-  .lrow .x { font: 550 12.5px/1.25 -apple-system; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .lrow .a { font: 600 12px/1 -apple-system; color: rgba(255,255,255,.45); }
+  .lrow .n { font: 650 14px/1.2 var(--sans); }
+  .lrow .x { font: 550 12.5px/1.25 var(--sans); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lrow .a { font: 600 12px/1 var(--sans); color: rgba(255,255,255,.45); }
 
   /* lock screen for the away clip */
   #lock { position: absolute; inset: 0; z-index: 95; background: radial-gradient(120% 90% at 50% 30%, #3b3530, #15120f); color: #fff; display: flex; flex-direction: column; align-items: center; padding-top: 220px; opacity: 0; }
-  #lock .time { font: 200 120px/1 -apple-system; letter-spacing: -2px; }
-  #lock .date { font: 500 22px/1 -apple-system; opacity: .8; margin-top: 18px; }
+  #lock .time { font: 200 120px/1 var(--sans); letter-spacing: -2px; }
+  #lock .date { font: 500 22px/1 var(--sans); opacity: .8; margin-top: 18px; }
 
   /* cursor + click */
   #cursor { position: absolute; z-index: 100; width: 26px; height: 34px; transform-origin: 0 0; }

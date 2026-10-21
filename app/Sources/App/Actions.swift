@@ -26,8 +26,23 @@ final class Actions {
 
     // MARK: - Go to
 
-    /// Brings up the session's own VS Code window (macOS slides to its desktop), then its terminal tab.
+    /// Goes to the session where it actually runs; never opens or resumes it anywhere else.
     func goTo(_ s: Session, owner: VSWindow?) {
+        let origin = s.origin ?? "vscode-terminal"
+        if origin == "background" { return }
+        if origin == "vscode-panel" {
+            // The Claude Code extension focuses its existing tab for this session.
+            if let url = URL(string: "vscode://anthropic.claude-code/open?session=\(s.id)") { NSWorkspace.shared.open(url) }
+            return
+        }
+        if origin == "desktop" {
+            NSRunningApplication.runningApplications(withBundleIdentifier: "com.anthropic.claudefordesktop").first?.activate()
+            return
+        }
+        if origin.hasPrefix("terminal") {
+            if let app = terminalApp(of: s.shellPid) { app.activate() }
+            return
+        }
         var focus = Msg(kind: "focusTerminal")
         focus.shellPid = s.shellPid
         if let owner {
@@ -37,12 +52,6 @@ final class Actions {
                 activateVSCode()
             }
             owner.conn.send(focus)
-        } else if isPanelSession(s), let url = URL(string: "vscode://anthropic.claude-code/open?session=\(s.id)") {
-            // A session in the Claude Code panel (no terminal): Anthropic's extension focuses its tab.
-            NSWorkspace.shared.open(url)
-        } else if let app = terminalApp(of: s.shellPid), app.bundleIdentifier != "com.microsoft.VSCode" {
-            // A session in another terminal (Terminal, iTerm, Ghostty…): bring that app forward.
-            app.activate()
         } else {
             activateVSCode()
             for w in Store.shared.windows.values { w.conn.send(focus) }
@@ -61,12 +70,6 @@ final class Actions {
         return nil
     }
 
-    /// Panel sessions are started by VS Code's extension host, not by a shell in a terminal.
-    private func isPanelSession(_ s: Session) -> Bool {
-        guard s.id.count == 36, let parent = Proc.info(s.shellPid) else { return false }
-        let shells = ["zsh", "bash", "fish", "sh", "login", "tmux"]
-        return !shells.contains(parent.comm) && !parent.comm.hasPrefix("-")
-    }
 
     /// Brings up the VS Code window that has this folder open (macOS then switches to its desktop).
     /// Goes through Launch Services like a double click, so no extra VS Code process shows up in the Dock.

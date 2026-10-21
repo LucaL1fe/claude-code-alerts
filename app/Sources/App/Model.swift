@@ -71,11 +71,15 @@ struct Session: Codable, Identifiable, Equatable {
     var updated: Date
     /// Claude called `cca notify --needs-you` and waits for you.
     var notifyPending = false
+    /// Where the session runs: vscode-terminal, vscode-panel, terminal[:bundle id], desktop, background.
+    var origin: String? = nil
+
+    var isBackground: Bool { origin == "background" }
 
     var name: String { customName ?? autoName }
 
     enum CodingKeys: String, CodingKey {
-        case id, autoName, customName, claudePid, shellPid, tty, cwd, transcript, state, detail, updated, notifyPending
+        case id, autoName, customName, claudePid, shellPid, tty, cwd, transcript, state, detail, updated, notifyPending, origin
     }
 
     init(id: String, autoName: String, customName: String?, claudePid: Int32, shellPid: Int32, tty: String?, cwd: String,
@@ -99,6 +103,7 @@ struct Session: Codable, Identifiable, Equatable {
         detail = try c.decode(String.self, forKey: .detail)
         updated = try c.decode(Date.self, forKey: .updated)
         notifyPending = try c.decodeIfPresent(Bool.self, forKey: .notifyPending) ?? false
+        origin = try c.decodeIfPresent(String.self, forKey: .origin)
     }
 }
 
@@ -134,11 +139,14 @@ final class AppSettings: ObservableObject {
     @Published var notchBand: Bool { didSet { d.set(notchBand, forKey: "notchBand") } }
     @Published var awayMinutes: Int { didSet { d.set(awayMinutes, forKey: "awayMinutes") } }
     @Published var tabDots: Bool { didSet { d.set(tabDots, forKey: "tabDots") } }
+    @Published var edgeGlow: Bool { didSet { d.set(edgeGlow, forKey: "edgeGlow") } }
+    /// Pills for runs without a window (scheduled tasks, `claude -p`); errors always get one.
+    @Published var backgroundPills: Bool { didSet { d.set(backgroundPills, forKey: "backgroundPills") } }
     /// Seconds after which a pill folds into the notch (it stays in the list). 0 = never.
     @Published var foldSeconds: Int { didSet { d.set(foldSeconds, forKey: "foldSeconds") } }
 
     private init() {
-        d.register(defaults: ["laterMinutes": 5, "sound": true, "voice": false, "macRing": true, "notchBand": false, "awayMinutes": 3, "foldSeconds": 0, "tabDots": true])
+        d.register(defaults: ["laterMinutes": 5, "sound": true, "voice": false, "macRing": true, "notchBand": false, "awayMinutes": 3, "foldSeconds": 0, "tabDots": true, "edgeGlow": false, "backgroundPills": false])
         laterMinutes = d.integer(forKey: "laterMinutes")
         sound = d.bool(forKey: "sound")
         voice = d.bool(forKey: "voice")
@@ -147,6 +155,8 @@ final class AppSettings: ObservableObject {
         awayMinutes = d.integer(forKey: "awayMinutes")
         foldSeconds = d.integer(forKey: "foldSeconds")
         tabDots = d.bool(forKey: "tabDots")
+        edgeGlow = d.bool(forKey: "edgeGlow")
+        backgroundPills = d.bool(forKey: "backgroundPills")
     }
 }
 

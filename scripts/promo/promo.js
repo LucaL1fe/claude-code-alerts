@@ -229,14 +229,14 @@ const CLIPS = {
       menubarApp(t < sw + 0.2 ? 'Chrome' : 'Code');
       setIcon(t >= 1.0 && t < sw ? 'done' : null, t >= 1.0 && t < sw ? 1 : 0);
       renderPills(t, [{ state: 'done', name: 'checkout-refactor', text: 'Validation added · all 3 tests pass', at: 1.0, out: sw + 0.05 }]);
-      edge(t, [{ state: 'done', at: 1.0 }]);
+      edge(t, []);
       const sp = spinner(t);
       setTabs([
         { title: `${sp} landing-page` },
         { title: t < sw + 0.3 ? '🟢 checkout-refactor' : '✳ checkout-refactor', on: t >= sw + 0.3 },
         { title: `${sp} payments` },
       ]);
-      camera(t, [[0, FULL], [1.35, FULL], [2.3, PILL], [3.2, { x: 940, y: 112, z: 1.8 }], [3.8, { x: 940, y: 112, z: 1.8 }], [4.6, FULL], [5.6, FULL], [6.5, { x: 640, y: 160, z: 1.7 }], [7.6, { x: 640, y: 160, z: 1.7 }]]);
+      camera(t, [[0, FULL], [1.35, FULL], [2.3, PILL], [3.2, { x: 860, y: 112, z: 1.7 }], [3.8, { x: 860, y: 112, z: 1.7 }], [4.6, FULL], [5.6, FULL], [6.5, { x: 640, y: 160, z: 1.7 }], [7.6, { x: 640, y: 160, z: 1.7 }]]);
       cursor(t, [[0, { x: 900, y: 720 }], [2.4, { x: 940, y: 520 }], [3.55, { x: 1037, y: 100 }], [4.4, { x: 1037, y: 100 }], [6.4, { x: 560, y: 150 }]], [sw]);
       caption(t, [{ at: 0.1, to: 2.2, text: 'Four Claude sessions. You are on Reddit.' }, { at: 2.2, to: 4.3, text: 'The second one is done, you know it.' }, { at: 4.6, to: 7.6, text: 'One click: the exact terminal tab.' }]);
     },
@@ -255,7 +255,7 @@ const CLIPS = {
       ];
       const shown = pills.filter((p) => t >= p.at).sort((a, b) => order(a.state) - order(b.state));
       renderPills(t < listAt ? t : -1, shown);
-      edge(t, [{ state: 'done', at: 0.5 }, { state: 'review', at: 1.05 }, { state: 'input', at: 1.6 }]);
+      edge(t, []);
       const n = shown.length;
       setIcon(n ? shown[0].state : null, n);
       const lk = spring(prog(t, listAt, listAt + 0.5));
@@ -304,7 +304,7 @@ const CLIPS = {
         { name: 'docs-update', state: 'idle' },
       ]);
       $('#sbcount').textContent = ['', '● 1 Claude', '● 2 Claude', '● 3 Claude'][[1.2, 2.2, 3.2].filter((a) => t >= a).length];
-      camera(t, [[0, { x: 760, y: 420, z: 0.95 }], [0.9, { x: 620, y: 150, z: 1.75 }], [3.9, { x: 620, y: 150, z: 1.75 }], [4.6, { x: 560, y: 260, z: 1.25 }], [6.6, { x: 560, y: 260, z: 1.25 }]]);
+      camera(t, [[0, { x: 760, y: 420, z: 0.95 }], [0.9, { x: 580, y: 215, z: 1.5 }], [3.9, { x: 580, y: 215, z: 1.5 }], [4.6, { x: 560, y: 260, z: 1.25 }], [6.6, { x: 560, y: 260, z: 1.25 }]]);
       cursor(t, [[0, { x: 900, y: 700 }], [4.2, { x: 700, y: 420 }], [4.85, { x: 560, y: 158 }], [6.6, { x: 560, y: 158 }]], [5.0]);
       caption(t, [{ at: 0.3, to: 4.4, text: 'Every tab shows who is waiting.' }, { at: 4.6, to: 6.6, text: 'Looked at it? Back to normal.' }]);
     },
@@ -323,7 +323,7 @@ const CLIPS = {
         { state: 'input', name: 'payments', text: 'Allow Bash: npm run migrate', at: back + 0.15 },
         { state: 'review', name: 'landing-page', text: 'Plan ready · pricing section in 3 steps', at: back + 0.3 },
       ], { at: back, text: 'While you were away · 2' });
-      edge(t, [{ state: 'done', at: 0.4 }, { state: 'input', at: back + 0.15 }]);
+      edge(t, []);
       setIcon(t >= 0.4 && t < back ? 'done' : t >= back ? 'input' : null, t >= back ? 3 : t >= 0.4 ? 1 : 0);
       const lk = Math.min(eprog(t, lockIn, lockIn + 0.4), 1 - eprog(t, lockOut, lockOut + 0.35));
       $('#lock').style.opacity = lk;
@@ -381,7 +381,7 @@ const CLIPS = {
       setTabs([{ title: t < 2.0 ? '✳ claude' : renamed ? `${sp} release-checklist` : `${sp} claude`, on: true, style: t >= 2.7 && t < 3.1 ? 'background:#2f2f33' : '' }, { title: '✳ landing-page' }]);
       setSessions([{ name: renamed ? 'release-checklist' : 'claude', state: t >= 5.0 ? 'input' : 'working' }, { name: 'landing-page', state: 'idle' }]);
       renderPills(t, [{ state: 'input', name: 'release-checklist', text: 'Enter your Mac password in the keychain prompt', at: 5.0 }]);
-      edge(t, [{ state: 'input', at: 5.0 }]);
+      edge(t, []);
       setIcon(t >= 5.0 ? 'input' : null, t >= 5.0 ? 1 : 0);
       camera(t, [[0, { x: 760, y: 220, z: 1.25 }], [2.4, { x: 700, y: 180, z: 1.35 }], [2.9, { x: 420, y: 130, z: 1.9 }], [3.8, { x: 420, y: 130, z: 1.9 }], [4.4, FULL], [5.3, FULL], [6.2, PILL], [8.2, { x: 800, y: 112, z: 1.75 }]]);
       $('#cursor').style.opacity = 0;
@@ -395,7 +395,7 @@ function menubarApp(name) { $('#menubar .left b:nth-child(2)').textContent = nam
 function listHTML() {
   const row = (id, state, name, text, ago) => `<div class="lrow" id="${id}" style="border:1.5px solid transparent">
     <span class="d" style="background:${COL[state]}"></span><span class="t"><div class="n">${name} <span style="opacity:.45;font-size:11px">✎</span></div>
-    <div class="x" style="color:${COL[state]}">${text}</div><div class="more" style="max-height:0;overflow:hidden;font:500 11.5px/18px -apple-system;color:rgba(255,255,255,.45)">just now · ${LABEL[state]}</div></span>
+    <div class="x" style="color:${COL[state]}">${text}</div><div class="more" style="max-height:0;overflow:hidden;font:500 11.5px/18px var(--sans);color:rgba(255,255,255,.45)">just now · ${LABEL[state]}</div></span>
     <span class="a">${ago}</span><span class="btns" style="display:none;gap:6px">${['x', 'clock', 'check'].map((k) => `<span class="b" style="width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,.13);display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" style="width:13px;height:13px;fill:none;stroke:#fff;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round">${ICON[k]}</svg></span>`).join('')}<span class="b" style="width:28px;height:28px;border-radius:50%;background:${COL[state]};display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" style="width:13px;height:13px;fill:none;stroke:#000;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round">${ICON.go}</svg></span></span></div>`;
   return `<div id="list"><div class="hd"><span>Waiting for you · 3</span><span>Mute all</span></div>
     ${row('row0', 'input', 'payments', 'Allow Bash: npm run migrate', 'now')}

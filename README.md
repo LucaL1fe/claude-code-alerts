@@ -4,7 +4,7 @@
 ready, even while you are on Reddit, and jump straight to its exact VS Code terminal tab with one click.
 
 <p align="center">
-  <img src="docs/media/hero.webp" alt="A Claude Code session finishes while you browse: the screen edge glows green, a pill names the session, one click opens its VS Code tab" width="900">
+  <img src="docs/media/hero.webp" alt="A Claude Code session finishes while you browse: a pill names the session, one click opens its VS Code tab" width="900">
 </p>
 
 ```bash
@@ -24,8 +24,8 @@ through tabs to find the one that has been waiting for you for ten minutes.
 
 Claude Code Alerts fixes exactly that:
 
-- **You notice it.** A short glow around the screen edge plus a pill under the notch, drawn on top of every app and every
-  desktop. It still shows when Focus / Do Not Disturb is on.
+- **You notice it.** A pill under the notch and a sound, drawn on top of every app and every desktop. It still shows
+  when Focus / Do Not Disturb is on.
 - **You know who.** The pill says which session and what happened: `checkout-refactor · Validation added, all 3 tests pass`.
 - **You land in the right place.** Click the pill and VS Code comes to the front, on the right desktop, with that exact
   terminal tab focused.
@@ -45,7 +45,7 @@ Each session's terminal tab gets a colored dot: 🟢 done, 🟠 needs you, 🟣 
 at it, it goes back to Claude's own title. The **Claude Sessions** view in the Explorer and the status bar show the
 same at a glance.
 
-<p align="center"><img src="docs/media/tab-dots.png" alt="VS Code terminal tabs with colored dots: done, plan ready, needs you" width="760"></p>
+<p align="center"><img src="docs/media/tabs.webp" alt="VS Code terminal tabs get colored dots as sessions finish, need you or have a plan ready" width="900"></p>
 
 ### Not now? Snooze it. Away? Nothing gets lost
 
@@ -57,7 +57,8 @@ asleep or idle) alerts wait quietly; when you are back you get one "While you we
 ### Claude is using your Mac
 
 When a session drives your Mac (computer use), a thin red ring stays around the screen so you keep your hands off, and
-a green "Mac is free" flare tells you when you can type again. The ring lets every click through.
+a short green glow tells you when you can type again. The ring lets every click through. (This is the only glow:
+other alerts are just the pill and a sound.)
 
 <p align="center"><img src="docs/media/mac.webp" alt="A red ring around the screen while Claude types, then a green Mac is free flare" width="900"></p>
 
@@ -72,7 +73,7 @@ me". Claude does it, and the pill shows Claude's own words.
 
 | | |
 |---|---|
-| Glow + pill on every app, every desktop, full screen apps, Focus on | Menu bar icon colored by the most urgent waiting item, with a count |
+| Pill on every app, every desktop, full screen apps, Focus on | Menu bar icon colored by the most urgent waiting item, with a count |
 | Exact VS Code terminal tab, on the right desktop, in one click | Colored dot in each terminal tab title: 🟢 🟠 🟣 🔴 |
 | Claude Sessions view and status bar item inside VS Code | Works with several VS Code windows and desktops |
 | States: working, needs you, plan ready, done, error, using your Mac | Per pill: quiet ✕, later 🕒, done ✓, go to → |
@@ -93,7 +94,10 @@ The installer:
 2. links the `cca` command to `~/.claude-code-alerts/bin/cca`;
 3. adds the hooks to `~/.claude/settings.json` (a backup is saved next to it, your other settings stay untouched) and
    the skill to `~/.claude/skills/claude-code-alerts`;
-4. installs the VS Code extension and starts the app. Reload open VS Code windows once.
+4. installs the VS Code extension and starts the app.
+
+> **Then reload your open VS Code windows once:** `Cmd+Shift+P` › **Developer: Reload Window**. VS Code only loads a
+> newly installed extension after a reload. Your terminals and Claude sessions keep running.
 
 Running sessions pick up the hooks by themselves. Run the same command again to update.
 
@@ -145,11 +149,18 @@ uses your Mac · when you count as away · open at login.
 
 ## FAQ
 
-**Does it work without VS Code?** Yes. Alerts, the menu bar and `cca` work with Claude Code in any terminal; a click
-brings that terminal app to the front. Only the exact-tab jump needs VS Code.
+**Where does "go to" take me?** Always to where the session already runs, never somewhere new:
 
-**Sessions in the Claude Code VS Code panel?** Supported: a click opens the session through the official Claude Code
-extension.
+| Session runs in | Go to |
+|---|---|
+| a VS Code terminal | the exact terminal tab, in the right window, on the right desktop |
+| the Claude Code panel (VS Code extension) | that panel tab (VS Code asks once to allow the link) |
+| the Claude desktop app | brings the Claude app forward |
+| iTerm, Ghostty, Terminal, … | brings that app forward |
+| the background (`claude -p`, scheduled tasks, scripts) | nothing to jump to: listed quietly, a pill only on errors |
+
+**Does it work without VS Code?** Yes. Alerts, the menu bar and `cca` work with Claude Code in any terminal. Only the
+exact-tab jump and the Claude Sessions view need VS Code.
 
 **Is this made by Anthropic?** No. It is a community project and not affiliated with Anthropic. "Claude" is a
 trademark of Anthropic.

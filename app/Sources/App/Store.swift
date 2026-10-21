@@ -191,6 +191,7 @@ final class Store: ObservableObject {
         if let c = msg.cwd, !c.isEmpty { s.cwd = c }
         if let t = msg.transcript { s.transcript = t }
         sessions[id] = s
+        classifyIfNeeded(id, entrypoint: msg.entrypoint)
         return id
     }
 
@@ -230,9 +231,28 @@ final class Store: ObservableObject {
         sessions[id] = s
     }
 
+    private func log(_ line: String) {
+        let url = CCA.supportDir.appendingPathComponent("events.log")
+        let stamp = ISO8601DateFormatter().string(from: Date())
+        let data = Data("\(stamp) \(line)\n".utf8)
+        if let h = try? FileHandle(forWritingTo: url) {
+            h.seekToEndOfFile(); h.write(data); try? h.close()
+            if (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0 > 400_000 {
+                try? FileManager.default.removeItem(at: url)
+            }
+        } else {
+            try? data.write(to: url)
+        }
+    }
+
     private func handleHook(_ msg: Msg, _ conn: Conn) {
         if demoMode && !isDemoSession(msg) { return }
         guard let event = msg.event, let id = upsert(msg) else { return }
+        let before = alerts.count
+        defer {
+            let s = sessions[id]
+            log("\(event) \(s?.name ?? id) origin=\(s?.origin ?? "-") entry=\(msg.entrypoint ?? "-") state=\(s?.state.rawValue ?? "-") alert=\(alerts.count > before ? "yes" : "no")")
+        }
         switch event {
         case "SessionStart":
             setState(id, .idle)
@@ -337,6 +357,8 @@ final class Store: ObservableObject {
         }
         setState(id, kind, text)
         guard let s = sessions[id] else { return }
+        // Runs without a window (scheduled tasks, claude -p): listed, but no pill unless it failed or you want them.
+        if s.isBackground && kind != .error && !settings.backgroundPills { return }
         if isLookingAt(s) {
             // You see it already: a finished session needs no dot or alert.
             if kind == .done { setState(id, .idle) }
@@ -354,7 +376,8 @@ final class Store: ObservableObject {
     /// Flare, sound, voice for something new on screen.
     /// No flare while a session drives the Mac: the flare windows would sit where Claude wants to click.
     func announce(_ kind: AState, _ s: Session?) {
-        if macSessionId == nil && kind != .mac { onFlare?(kind) }
+        // The glow is for computer use ("Mac is free"); for other alerts only if switched on in Settings.
+        if macSessionId == nil && kind != .mac && (kind == .free || settings.edgeGlow) { onFlare?(kind) }
         Actions.shared.sound(kind)
         if let s { Actions.shared.speak("\(s.name), \(kind.label)") }
     }
@@ -465,6 +488,43 @@ final class Store: ObservableObject {
         changed()
     }
 
+    // MARK: - Where a session runs
+
+    static let shells: Set<String> = ["zsh", "bash", "fish", "sh", "dash", "nu", "login", "tmux", "screen"]
+
+    /// Decides where a session lives from facts, never guesses: Claude Code's entry point, the parent process and the
+    /// first app above it. Used by "go to" and to keep background runs quiet.
+    static func classify(claudePid: Int32, entrypoint: String?) -> String {
+        if let e = entrypoint, e.contains("vscode") { return "vscode-panel" }
+        // Print mode and the SDKs (claude -p, scheduled tasks, scripts) have no window to go to.
+        if let e = entrypoint, e.hasPrefix("sdk") { return "background" }
+        guard claudePid > 0, let me = Proc.info(claudePid) else { return "background" }
+        let parent = Proc.info(me.ppid)
+        let underShell = parent.map { shells.contains($0.comm) || $0.comm.hasPrefix("-") } ?? false
+        var pid = me.ppid
+        var host: NSRunningApplication?
+        for _ in 0..<14 {
+            guard pid > 1 else { break }
+            if let app = NSRunningApplication(processIdentifier: pid), app.activationPolicy == .regular { host = app; break }
+            guard let info = Proc.info(pid) else { break }
+            pid = info.ppid
+        }
+        let bundle = host?.bundleIdentifier ?? ""
+        if underShell {
+            if bundle.contains("VSCode") { return "vscode-terminal" }
+            return bundle.isEmpty ? "terminal" : "terminal:" + bundle
+        }
+        let sessionFile = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/sessions/\(claudePid).json")
+        if bundle.hasPrefix("com.anthropic."), FileManager.default.fileExists(atPath: sessionFile.path) { return "desktop" }
+        return "background"
+    }
+
+    private func classifyIfNeeded(_ id: String, entrypoint: String? = nil) {
+        guard var s = sessions[id], s.origin == nil || entrypoint != nil, !id.hasPrefix("debug-") else { return }
+        let o = Self.classify(claudePid: s.claudePid, entrypoint: entrypoint)
+        if s.origin != o { s.origin = o; sessions[id] = s }
+    }
+
     // MARK: - Discovery
 
     private var lastDiscovery = Date.distantPast
@@ -480,7 +540,9 @@ final class Store: ObservableObject {
                 if let n = e.name, !n.isEmpty, s.autoName != n { s.autoName = n; dirty = true }
                 if s.claudePid != e.pid { s.claudePid = e.pid; dirty = true }
                 if let sh = shell, s.shellPid != sh.pid { s.shellPid = sh.pid; s.tty = sh.tty; dirty = true }
+                if s.origin == nil { dirty = true }
                 sessions[e.sessionId] = s
+                classifyIfNeeded(e.sessionId)
             } else {
                 if demoMode && !e.cwd.contains("claude-code-alerts-demo") { continue }
                 // The same terminal may still hold an older session of this process.
@@ -489,6 +551,7 @@ final class Store: ObservableObject {
                                                 customName: nil, claudePid: e.pid, shellPid: shell?.pid ?? 0,
                                                 tty: shell?.tty, cwd: e.cwd, transcript: nil,
                                                 state: e.busy ? .working : .idle, detail: "", updated: Date())
+                classifyIfNeeded(e.sessionId)
                 dirty = true
             }
         }
@@ -536,7 +599,7 @@ final class Store: ObservableObject {
             if !queued.isEmpty {
                 summaryCount = queued.count
                 let top = queued.sorted(by: Self.order).first!.kind
-                onFlare?(top)
+                if settings.edgeGlow { onFlare?(top) }
                 Actions.shared.sound(top)
                 DispatchQueue.main.asyncAfter(deadline: .now() + 20) { [weak self] in
                     self?.summaryCount = 0

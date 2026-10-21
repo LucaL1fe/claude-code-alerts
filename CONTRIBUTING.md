@@ -20,7 +20,8 @@ app/        Swift package: the menu bar app (ClaudeCodeAlerts) and the cca CLI
   Sources/CLI      cca: hook entry point, notify/rename/mac, debug commands
 vscode/     VS Code extension (plain JavaScript, no dependencies)
 plugin/     Claude Code hooks + skill (also usable as a plugin)
-scripts/    build.sh, hooks.py (merges hooks into settings.json), dev-reinstall.sh, demo/ (README clips)
+scripts/    build.sh, hooks.py (merges hooks into settings.json), dev-reinstall.sh
+scripts/promo/  the README clips, drawn in HTML and rendered headless frame by frame (render.mjs, needs playwright)
 ```
 
 ## Develop
@@ -39,6 +40,7 @@ cca debug event --name my-session --state done --text "It works"   # also input,
 cca debug away on|off
 cca debug clear
 cca status
+tail -f ~/Library/Application\ Support/claude-code-alerts/events.log   # every hook event and what the app did
 ```
 
 ## Guidelines

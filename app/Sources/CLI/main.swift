@@ -4,7 +4,7 @@ import Shared
 // cca: the command line side of Claude Code Alerts.
 // Hooks call `cca hook` (hook JSON on stdin). Claude itself can call `cca notify`, `cca rename`, `cca mac`.
 
-let version = "0.2.1"
+let version = "0.3.0"
 var args = Array(CommandLine.arguments.dropFirst())
 
 func usage() -> Never {
@@ -55,6 +55,7 @@ func deliver(_ msg: Msg, waitReply: Bool = false) -> Msg? {
 
 /// The calling Claude session's processes (cca runs inside Claude's Bash tool or a hook).
 func withProcs(_ msg: inout Msg) {
+    msg.entrypoint = ProcessInfo.processInfo.environment["CLAUDE_CODE_ENTRYPOINT"]
     if let found = Proc.claudeAndShell() {
         msg.claudePid = found.claude.pid
         msg.shellPid = found.shell?.pid
