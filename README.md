@@ -162,6 +162,10 @@ uses your Mac · when you count as away · open at login.
 **Does it work without VS Code?** Yes. Alerts, the menu bar and `cca` work with Claude Code in any terminal. Only the
 exact-tab jump and the Claude Sessions view need VS Code.
 
+**Where is the icon? Can I move it?** It starts next to the system icons on the right. Hold **Cmd** and drag it
+anywhere in the menu bar; the position is remembered. If you use a menu bar manager (Ice, Bartender), make sure it is
+not in the hidden section.
+
 **Is this made by Anthropic?** No. It is a community project and not affiliated with Anthropic. "Claude" is a
 trademark of Anthropic.
 

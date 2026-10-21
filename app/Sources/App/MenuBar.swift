@@ -4,7 +4,21 @@ import SwiftUI
 /// Our menu bar icon: four rounded squares, colored by the most urgent waiting item, with a count.
 /// Clicking it opens the list in a panel that takes the keyboard (for renaming) without activating the app.
 final class MenuBarController: NSObject {
-    private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+    private static let autosaveName = "ClaudeCodeAlerts"
+
+    /// New menu bar items start at the far left, where the notch hides them on a full menu bar. Start near the system
+    /// icons instead; after that macOS remembers wherever you Cmd-drag it to (keyed by the autosave name).
+    private static func preparePosition() {
+        let key = "NSStatusItem Preferred Position \(autosaveName)"
+        if UserDefaults.standard.object(forKey: key) == nil { UserDefaults.standard.set(260.0, forKey: key) }
+    }
+
+    private let item: NSStatusItem = {
+        preparePosition()
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        item.autosaveName = autosaveName
+        return item
+    }()
     private var panel: OverlayPanel?
     private var host: NSHostingView<AnyView>?
     private var monitors: [Any] = []
