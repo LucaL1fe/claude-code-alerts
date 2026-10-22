@@ -241,9 +241,9 @@ function picked(key, keys) {
   return key ? [key] : treeView.selection;
 }
 
-// Where something new goes: into the clicked or selected folder, else next to the session (in its folder).
+// Where something new goes: into the folder you clicked it on (hover button, right-click), next to the session you
+// right-clicked (in its folder), or from the title bar to the top level, whatever is selected.
 function targetFolder(key) {
-  key = key || treeView.selection[0];
   return !key ? null : key.startsWith('f:') ? key.slice(2) : folderOf(sessionById.get(key.slice(2)));
 }
 
