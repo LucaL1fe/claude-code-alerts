@@ -253,6 +253,8 @@ public enum ClaudeSessions {
         public var sessionId: String
         public var cwd: String
         public var name: String?
+        /// The name is only Claude Code's placeholder (folder + id, e.g. "raccoon-b3"), not a real title.
+        public var derived: Bool
         public var busy: Bool
         public var startedAt: Date?
     }
@@ -269,6 +271,7 @@ public enum ClaudeSessions {
             else { continue }
             let started = (obj["startedAt"] as? NSNumber).map { Date(timeIntervalSince1970: $0.doubleValue / 1000) }
             out.append(Entry(pid: pid, sessionId: id, cwd: obj["cwd"] as? String ?? "", name: obj["name"] as? String,
+                             derived: (obj["nameSource"] as? String) == "derived",
                              busy: (obj["status"] as? String) == "busy", startedAt: started))
         }
         return out

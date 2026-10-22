@@ -213,7 +213,7 @@ final class Store: ObservableObject {
     func terminalName(for shellPid: Int32) -> String? {
         guard shellPid > 0, let t = windowOwning(shellPid)?.terminals.first(where: { $0.pid == shellPid }) else { return nil }
         let name = Self.cleanName(t.name)
-        let generic: Set<String> = ["zsh", "bash", "fish", "sh", "node", "claude", "terminal", "login"]
+        let generic: Set<String> = ["zsh", "bash", "fish", "sh", "node", "claude", "claude code", "terminal", "login"]
         if name.isEmpty || generic.contains(name.lowercased()) { return nil }
         if name.range(of: #"^\d+\.\d+\.\d+"#, options: .regularExpression) != nil { return nil }
         return name
@@ -547,7 +547,9 @@ final class Store: ObservableObject {
         for e in ClaudeSessions.scan() {
             let shell = Proc.info(e.pid).flatMap { Proc.info($0.ppid) }
             if var s = sessions[e.sessionId] {
-                if let n = e.name, !n.isEmpty, s.autoName != n { s.autoName = n; dirty = true }
+                // A placeholder name never replaces the title the hooks found; it only stands in until there is one.
+                let n = e.derived ? (s.autoName == e.name ? title(of: e, transcript: s.transcript, shell: shell?.pid) : nil) : e.name
+                if let n, !n.isEmpty, s.autoName != n { s.autoName = n; dirty = true }
                 if s.claudePid != e.pid { s.claudePid = e.pid; dirty = true }
                 if let sh = shell, s.shellPid != sh.pid { s.shellPid = sh.pid; s.tty = sh.tty; dirty = true }
                 if s.origin == nil { dirty = true }
@@ -558,7 +560,8 @@ final class Store: ObservableObject {
                 if demoMode && !e.cwd.contains("claude-code-alerts-demo") { continue }
                 // The same terminal may still hold an older session of this process.
                 sessions = sessions.filter { $0.value.claudePid != e.pid || $0.key.hasPrefix("debug-") }
-                sessions[e.sessionId] = Session(id: e.sessionId, autoName: e.name ?? (e.cwd as NSString).lastPathComponent,
+                let name = e.derived ? title(of: e, transcript: nil, shell: shell?.pid) : e.name
+                sessions[e.sessionId] = Session(id: e.sessionId, autoName: name ?? (e.cwd as NSString).lastPathComponent,
                                                 customName: nil, claudePid: e.pid, shellPid: shell?.pid ?? 0,
                                                 tty: shell?.tty, cwd: e.cwd, transcript: nil,
                                                 state: e.busy ? .working : .idle, detail: "", updated: Date())
@@ -568,6 +571,12 @@ final class Store: ObservableObject {
             }
         }
         if dirty { changed() }
+    }
+
+    /// The real title of a session Claude Code only has a placeholder name for: the transcript's title,
+    /// else its VS Code tab (Claude Code puts the title there), else the placeholder.
+    private func title(of e: ClaudeSessions.Entry, transcript: String?, shell: Int32?) -> String? {
+        Transcript.name(path: transcript) ?? terminalName(for: shell ?? 0) ?? e.name
     }
 
     // MARK: - Timers (called every second)
