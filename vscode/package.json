@@ -50,11 +50,138 @@
     "commands": [
       {
         "command": "claudeCodeAlerts.goto",
-        "title": "Claude Code Alerts: Go to session"
+        "title": "Go to Session",
+        "category": "Claude Code Alerts"
       },
       {
         "command": "claudeCodeAlerts.settings",
         "title": "Claude Code Alerts: Open settings"
+      },
+      {
+        "command": "claudeCodeAlerts.newFolder",
+        "title": "New Folder...",
+        "category": "Claude Code Alerts",
+        "icon": "$(new-folder)"
+      },
+      {
+        "command": "claudeCodeAlerts.rename",
+        "title": "Rename...",
+        "category": "Claude Code Alerts"
+      },
+      {
+        "command": "claudeCodeAlerts.deleteFolder",
+        "title": "Delete Folder",
+        "category": "Claude Code Alerts"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "claudeCodeAlerts.newFolder",
+          "when": "view == claudeCodeAlerts.sessions",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "claudeCodeAlerts.goto",
+          "when": "view == claudeCodeAlerts.sessions && viewItem == session",
+          "group": "1_go"
+        },
+        {
+          "command": "claudeCodeAlerts.newFolder",
+          "when": "view == claudeCodeAlerts.sessions",
+          "group": "2_new"
+        },
+        {
+          "command": "claudeCodeAlerts.rename",
+          "when": "view == claudeCodeAlerts.sessions",
+          "group": "3_edit@1"
+        },
+        {
+          "command": "claudeCodeAlerts.deleteFolder",
+          "when": "view == claudeCodeAlerts.sessions && viewItem == folder",
+          "group": "3_edit@2"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "claudeCodeAlerts.goto",
+          "when": "false"
+        },
+        {
+          "command": "claudeCodeAlerts.rename",
+          "when": "false"
+        },
+        {
+          "command": "claudeCodeAlerts.deleteFolder",
+          "when": "false"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "claudeCodeAlerts.rename",
+        "key": "f2",
+        "when": "focusedView == claudeCodeAlerts.sessions"
+      },
+      {
+        "command": "claudeCodeAlerts.deleteFolder",
+        "key": "delete",
+        "mac": "cmd+backspace",
+        "when": "focusedView == claudeCodeAlerts.sessions"
+      }
+    ],
+    "colors": [
+      {
+        "id": "claudeCodeAlerts.needsYou",
+        "description": "Claude Sessions view: a session that needs you, and its folders.",
+        "defaults": {
+          "dark": "#FF9F0A",
+          "light": "#B35F00",
+          "highContrast": "#FF9F0A",
+          "highContrastLight": "#B35F00"
+        }
+      },
+      {
+        "id": "claudeCodeAlerts.plan",
+        "description": "Claude Sessions view: a plan ready to review.",
+        "defaults": {
+          "dark": "#BF5AF2",
+          "light": "#8E3FD0",
+          "highContrast": "#BF5AF2",
+          "highContrastLight": "#8E3FD0"
+        }
+      },
+      {
+        "id": "claudeCodeAlerts.done",
+        "description": "Claude Sessions view: a session that finished.",
+        "defaults": {
+          "dark": "#34C759",
+          "light": "#1E8E3E",
+          "highContrast": "#34C759",
+          "highContrastLight": "#1E8E3E"
+        }
+      },
+      {
+        "id": "claudeCodeAlerts.error",
+        "description": "Claude Sessions view: an error, or Claude using your Mac.",
+        "defaults": {
+          "dark": "#FF453A",
+          "light": "#D93025",
+          "highContrast": "#FF453A",
+          "highContrastLight": "#D93025"
+        }
+      },
+      {
+        "id": "claudeCodeAlerts.working",
+        "description": "Claude Sessions view: a session at work.",
+        "defaults": {
+          "dark": "#4C8DFF",
+          "light": "#1A66E0",
+          "highContrast": "#4C8DFF",
+          "highContrastLight": "#1A66E0"
+        }
       }
     ],
     "configuration": {

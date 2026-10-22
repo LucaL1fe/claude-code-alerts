@@ -37,14 +37,39 @@ public struct SessionInfo: Codable, Equatable {
     public var detail: String
     public var shellPid: Int32
     public var updated: Double
+    /// Its folder in the Sessions view (nil = top level) and its position there.
+    public var folder: String?
+    public var order: Double
 
-    public init(id: String, name: String, state: String, detail: String, shellPid: Int32, updated: Double) {
+    public init(id: String, name: String, state: String, detail: String, shellPid: Int32, updated: Double,
+                folder: String? = nil, order: Double = 0) {
         self.id = id
         self.name = name
         self.state = state
         self.detail = detail
         self.shellPid = shellPid
         self.updated = updated
+        self.folder = folder
+        self.order = order
+    }
+}
+
+/// A folder you made in the Sessions view, like a folder in the VS Code Explorer.
+public struct FolderInfo: Codable, Equatable {
+    public var id: String
+    public var name: String
+    /// The folder it is in (nil = top level), and its position there.
+    public var parent: String?
+    public var order: Double
+    /// Made in demo mode: shown only in demo mode, so recordings never show your own folders.
+    public var demo: Bool?
+
+    public init(id: String, name: String, parent: String?, order: Double, demo: Bool? = nil) {
+        self.id = id
+        self.name = name
+        self.parent = parent
+        self.order = order
+        self.demo = demo
     }
 }
 
@@ -67,6 +92,12 @@ public struct Msg: Codable {
     public var workspace: String?
     public var terminals: [TermInfo]?
     public var sessions: [SessionInfo]?
+    public var folders: [FolderInfo]?
+    /// Folder operations: the folder (create: the one to make it in; move: the one to move into; nil = top level),
+    /// the moved items ("s:<session id>", "f:<folder id>") and the item they go in front of (nil = at the end).
+    public var folder: String?
+    public var ids: [String]?
+    public var before: String?
     public var focused: Bool?
     public var flag: Bool?
     public var entrypoint: String?

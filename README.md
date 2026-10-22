@@ -50,7 +50,12 @@ at it, it goes back to Claude's own title.
 ### Every session at a glance
 
 The **Claude Sessions** view in VS Code's Explorer lists every running Claude session with its live state and what it
-is doing, most urgent first. Click one and you are in its terminal. The status bar shows how many are waiting.
+is doing. Click one and you are in its terminal. The status bar shows how many are waiting.
+
+Sort them into your own folders, like files in the Explorer: New Folder in the view's title bar, drag sessions and
+folders where you want them, F2 or right-click to rename. A session that needs you colors its name and every folder
+above it, so a collapsed folder still shows that something inside waits. A resumed session (or one started again after
+`/clear` in the same tab) comes back to its folder.
 
 <p align="center"><img src="docs/media/sessions.webp" alt="The Claude Sessions view in VS Code updates live; a click opens the session that needs permission" width="900"></p>
 
