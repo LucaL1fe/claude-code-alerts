@@ -242,7 +242,7 @@ function picked(key, keys) {
 }
 
 // Where something new goes: into the folder you clicked it on (hover button, right-click), next to the session you
-// right-clicked (in its folder), or from the title bar to the top level, whatever is selected.
+// right-clicked (in its folder), else the top level.
 function targetFolder(key) {
   return !key ? null : key.startsWith('f:') ? key.slice(2) : folderOf(sessionById.get(key.slice(2)));
 }
@@ -390,6 +390,9 @@ function activate(context) {
     vscode.commands.registerCommand('claudeCodeAlerts.goto', gotoSession),
     vscode.commands.registerCommand('claudeCodeAlerts.newSession', newSession),
     vscode.commands.registerCommand('claudeCodeAlerts.newFolder', newFolder),
+    // The title bar buttons: VS Code hands title actions the focused row, so these ignore it and mean the top level.
+    vscode.commands.registerCommand('claudeCodeAlerts.newSessionTopLevel', () => newSession(null)),
+    vscode.commands.registerCommand('claudeCodeAlerts.newFolderTopLevel', () => newFolder(null)),
     vscode.commands.registerCommand('claudeCodeAlerts.rename', rename),
     vscode.commands.registerCommand('claudeCodeAlerts.deleteFolder', deleteFolder),
     vscode.commands.registerCommand('claudeCodeAlerts.moveTo', moveTo),
