@@ -23,6 +23,8 @@ final class Store: ObservableObject {
     @Published private(set) var folders: [String: FolderInfo] = [:]
     private(set) var places: [String: Place] = [:]
     private var lastInShell: [Int32: (id: String, at: Date)] = [:]
+    /// Terminals opened with New Session in a folder (shell PID → folder): their session goes there.
+    private var expected: [Int32: (folder: String, at: Date)] = [:]
     @Published private(set) var alerts: [AlertItem] = []
     @Published var away = false
     @Published var summaryCount = 0
@@ -713,14 +715,17 @@ final class Store: ObservableObject {
         places[sessionId]?.folder.flatMap { folders[$0] != nil ? $0 : nil }
     }
 
-    /// Gives a session its place once. A resumed session keeps its old one. A session that follows another in the same
-    /// terminal (/clear, or a new `claude` in that tab) takes over that one's place. Any other goes to the end of the top level.
+    /// Gives a session its place once. A resumed session keeps its old one. A session in a terminal opened with New Session
+    /// in a folder goes to that folder. A session that follows another in the same terminal (/clear, or a new `claude` in
+    /// that tab) takes over that one's place. Any other goes to the end of the top level.
     private func place(_ id: String) {
         guard places[id] == nil, let s = sessions[id] else { return }
         let inTerminal = s.shellPid > 0 && (s.origin ?? "").contains("terminal")
         let prior = !inTerminal ? nil : sessions.values.first { $0.id != id && $0.shellPid == s.shellPid }?.id
             ?? lastInShell[s.shellPid].flatMap { Date().timeIntervalSince($0.at) < 300 ? $0.id : nil }
-        if let prior, let p = places[prior] {
+        if s.shellPid > 0, let e = expected.removeValue(forKey: s.shellPid), Date().timeIntervalSince(e.at) < 600 {
+            places[id] = Place(folder: e.folder, order: nextOrder(e.folder), used: Date())
+        } else if let prior, let p = places[prior] {
             places[id] = Place(folder: p.folder, order: p.order, used: Date())
         } else {
             places[id] = Place(folder: nil, order: nextOrder(nil), used: Date())
@@ -765,6 +770,10 @@ final class Store: ObservableObject {
             folders.removeValue(forKey: id)
         case "move":
             move(msg.ids ?? [], into: msg.folder, before: msg.before)
+        case "expect":
+            guard let pid = msg.shellPid, pid > 0, let f = msg.folder, folders[f] != nil else { return }
+            expected[pid] = (f, Date())
+            return
         default:
             return
         }

@@ -4,6 +4,7 @@ Companion extension of the [Claude Code Alerts](https://github.com/LucaL1fe/clau
 
 - Jumps to the **exact terminal tab** of a Claude Code session when you click its alert.
 - **Claude Sessions** view in the Explorer: every session with its state (working, needs you, plan ready, done, error).
+- **New Session** (+ in the view's title bar, or right-click a folder): a terminal tab that starts `claude`, in that folder.
 - Your own **folders** in that view, like in the Explorer: drag sessions and folders around, rename with F2. A folder
   takes the color of the most urgent session inside, also when it is collapsed.
 - Status bar item with the number of sessions waiting for you.

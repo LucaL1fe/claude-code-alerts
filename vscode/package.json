@@ -58,6 +58,12 @@
         "title": "Claude Code Alerts: Open settings"
       },
       {
+        "command": "claudeCodeAlerts.newSession",
+        "title": "New Session",
+        "category": "Claude Code Alerts",
+        "icon": "$(add)"
+      },
+      {
         "command": "claudeCodeAlerts.newFolder",
         "title": "New Folder...",
         "category": "Claude Code Alerts",
@@ -77,21 +83,31 @@
     "menus": {
       "view/title": [
         {
-          "command": "claudeCodeAlerts.newFolder",
+          "command": "claudeCodeAlerts.newSession",
           "when": "view == claudeCodeAlerts.sessions",
-          "group": "navigation"
-        }
-      ],
-      "view/item/context": [
-        {
-          "command": "claudeCodeAlerts.goto",
-          "when": "view == claudeCodeAlerts.sessions && viewItem == session",
-          "group": "1_go"
+          "group": "navigation@1"
         },
         {
           "command": "claudeCodeAlerts.newFolder",
           "when": "view == claudeCodeAlerts.sessions",
-          "group": "2_new"
+          "group": "navigation@2"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "claudeCodeAlerts.newSession",
+          "when": "view == claudeCodeAlerts.sessions",
+          "group": "1_new@1"
+        },
+        {
+          "command": "claudeCodeAlerts.newFolder",
+          "when": "view == claudeCodeAlerts.sessions",
+          "group": "1_new@2"
+        },
+        {
+          "command": "claudeCodeAlerts.goto",
+          "when": "view == claudeCodeAlerts.sessions && viewItem == session",
+          "group": "2_go"
         },
         {
           "command": "claudeCodeAlerts.rename",
@@ -192,6 +208,26 @@
           "default": false,
           "scope": "resource",
           "description": "Development only: allow the app's demo scripts to open terminals in this workspace."
+        },
+        "claudeCodeAlerts.newSessionCommand": {
+          "type": "string",
+          "default": "claude",
+          "scope": "machine",
+          "description": "Command that New Session runs in its new terminal (for example \"claude --model opus\")."
+        },
+        "claudeCodeAlerts.newSessionLocation": {
+          "type": "string",
+          "enum": [
+            "editor",
+            "panel"
+          ],
+          "default": "editor",
+          "scope": "machine",
+          "enumDescriptions": [
+            "A terminal tab in the editor area.",
+            "A terminal in the panel."
+          ],
+          "description": "Where New Session opens its terminal."
         }
       }
     }

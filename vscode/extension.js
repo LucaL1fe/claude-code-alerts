@@ -231,13 +231,35 @@ function picked(key, keys) {
   return key ? [key] : treeView.selection;
 }
 
-async function newFolder(key) {
+// Where something new goes: into the clicked or selected folder, else next to the session (in its folder).
+function targetFolder(key) {
   key = key || treeView.selection[0];
-  const parent = !key ? null : key.startsWith('f:') ? key.slice(2) : folderOf(sessionById.get(key.slice(2)));
+  return !key ? null : key.startsWith('f:') ? key.slice(2) : folderOf(sessionById.get(key.slice(2)));
+}
+
+async function newFolder(key) {
+  const parent = targetFolder(key);
   const name = await vscode.window.showInputBox({
     prompt: parent ? `New folder in ${folderById.get(parent).name}` : 'New folder', placeHolder: 'Folder name'
   });
   if (name && name.trim()) send({ kind: 'folder', event: 'create', name: name.trim(), folder: parent });
+}
+
+// Opens a terminal tab that starts Claude; started from a folder, the session lands in that folder.
+async function newSession(key) {
+  const folder = targetFolder(key);
+  const cfg = vscode.workspace.getConfiguration('claudeCodeAlerts');
+  const t = vscode.window.createTerminal({
+    cwd: workspacePath(),
+    location: cfg.get('newSessionLocation') === 'panel' ? vscode.TerminalLocation.Panel : vscode.TerminalLocation.Editor,
+    // VS Code may have been opened from inside a Claude session: without this, claude would think it is nested.
+    env: { CLAUDECODE: null, CLAUDE_CODE_CHILD_SESSION: null, CLAUDE_CODE_ENTRYPOINT: null }
+  });
+  t.show(false);
+  t.sendText(cfg.get('newSessionCommand') || 'claude');
+  const shellPid = await t.processId;
+  if (folder && shellPid) send({ kind: 'folder', event: 'expect', folder, shellPid });
+  reportSoon();
 }
 
 async function rename(key) {
@@ -332,6 +354,7 @@ function activate(context) {
     treeView,
     vscode.window.registerFileDecorationProvider(decorations),
     vscode.commands.registerCommand('claudeCodeAlerts.goto', gotoSession),
+    vscode.commands.registerCommand('claudeCodeAlerts.newSession', newSession),
     vscode.commands.registerCommand('claudeCodeAlerts.newFolder', newFolder),
     vscode.commands.registerCommand('claudeCodeAlerts.rename', rename),
     vscode.commands.registerCommand('claudeCodeAlerts.deleteFolder', deleteFolder),
