@@ -2,7 +2,7 @@
   "name": "claude-code-alerts",
   "displayName": "Claude Code Alerts: notifications for Claude Code terminals",
   "description": "Know which Claude Code session is done or needs you, and jump to the exact VS Code terminal tab. Companion of the Claude Code Alerts Mac app.",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "publisher": "lucal1fe",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -131,18 +131,18 @@
       ],
       "view/item/context": [
         {
-          "command": "claudeCodeAlerts.newSession",
-          "when": "view == claudeCodeAlerts.sessions && viewItem =~ /^folder/",
-          "group": "inline@1"
-        },
-        {
           "command": "claudeCodeAlerts.moveUp",
           "when": "view == claudeCodeAlerts.sessions && viewItem =~ /canUp/",
-          "group": "inline@2"
+          "group": "inline@1"
         },
         {
           "command": "claudeCodeAlerts.moveDown",
           "when": "view == claudeCodeAlerts.sessions && viewItem =~ /canDown/",
+          "group": "inline@2"
+        },
+        {
+          "command": "claudeCodeAlerts.newSession",
+          "when": "view == claudeCodeAlerts.sessions && viewItem =~ /^folder/",
           "group": "inline@3"
         },
         {
