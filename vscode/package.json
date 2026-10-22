@@ -72,11 +72,33 @@
       {
         "command": "claudeCodeAlerts.rename",
         "title": "Rename...",
-        "category": "Claude Code Alerts"
+        "category": "Claude Code Alerts",
+        "icon": "$(edit)"
       },
       {
         "command": "claudeCodeAlerts.deleteFolder",
         "title": "Delete Folder",
+        "category": "Claude Code Alerts",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "claudeCodeAlerts.moveTo",
+        "title": "Move to Folder...",
+        "category": "Claude Code Alerts"
+      },
+      {
+        "command": "claudeCodeAlerts.moveToTop",
+        "title": "Move to Top Level",
+        "category": "Claude Code Alerts"
+      },
+      {
+        "command": "claudeCodeAlerts.moveUp",
+        "title": "Move Up",
+        "category": "Claude Code Alerts"
+      },
+      {
+        "command": "claudeCodeAlerts.moveDown",
+        "title": "Move Down",
         "category": "Claude Code Alerts"
       }
     ],
@@ -96,6 +118,21 @@
       "view/item/context": [
         {
           "command": "claudeCodeAlerts.newSession",
+          "when": "view == claudeCodeAlerts.sessions && viewItem =~ /^folder/",
+          "group": "inline@1"
+        },
+        {
+          "command": "claudeCodeAlerts.rename",
+          "when": "view == claudeCodeAlerts.sessions && viewItem =~ /^folder/",
+          "group": "inline@2"
+        },
+        {
+          "command": "claudeCodeAlerts.deleteFolder",
+          "when": "view == claudeCodeAlerts.sessions && viewItem =~ /^folder/",
+          "group": "inline@3"
+        },
+        {
+          "command": "claudeCodeAlerts.newSession",
           "when": "view == claudeCodeAlerts.sessions",
           "group": "1_new@1"
         },
@@ -106,18 +143,38 @@
         },
         {
           "command": "claudeCodeAlerts.goto",
-          "when": "view == claudeCodeAlerts.sessions && viewItem == session",
+          "when": "view == claudeCodeAlerts.sessions && viewItem =~ /^session/",
           "group": "2_go"
+        },
+        {
+          "command": "claudeCodeAlerts.moveTo",
+          "when": "view == claudeCodeAlerts.sessions",
+          "group": "3_move@1"
+        },
+        {
+          "command": "claudeCodeAlerts.moveToTop",
+          "when": "view == claudeCodeAlerts.sessions && viewItem =~ /-nested$/",
+          "group": "3_move@2"
+        },
+        {
+          "command": "claudeCodeAlerts.moveUp",
+          "when": "view == claudeCodeAlerts.sessions && viewItem =~ /^folder/",
+          "group": "3_move@3"
+        },
+        {
+          "command": "claudeCodeAlerts.moveDown",
+          "when": "view == claudeCodeAlerts.sessions && viewItem =~ /^folder/",
+          "group": "3_move@4"
         },
         {
           "command": "claudeCodeAlerts.rename",
           "when": "view == claudeCodeAlerts.sessions",
-          "group": "3_edit@1"
+          "group": "4_edit@1"
         },
         {
           "command": "claudeCodeAlerts.deleteFolder",
-          "when": "view == claudeCodeAlerts.sessions && viewItem == folder",
-          "group": "3_edit@2"
+          "when": "view == claudeCodeAlerts.sessions && viewItem =~ /^folder/",
+          "group": "4_edit@2"
         }
       ],
       "commandPalette": [
@@ -132,6 +189,22 @@
         {
           "command": "claudeCodeAlerts.deleteFolder",
           "when": "false"
+        },
+        {
+          "command": "claudeCodeAlerts.moveTo",
+          "when": "false"
+        },
+        {
+          "command": "claudeCodeAlerts.moveToTop",
+          "when": "false"
+        },
+        {
+          "command": "claudeCodeAlerts.moveUp",
+          "when": "false"
+        },
+        {
+          "command": "claudeCodeAlerts.moveDown",
+          "when": "false"
         }
       ]
     },
@@ -145,6 +218,16 @@
         "command": "claudeCodeAlerts.deleteFolder",
         "key": "delete",
         "mac": "cmd+backspace",
+        "when": "focusedView == claudeCodeAlerts.sessions"
+      },
+      {
+        "command": "claudeCodeAlerts.moveUp",
+        "key": "alt+up",
+        "when": "focusedView == claudeCodeAlerts.sessions"
+      },
+      {
+        "command": "claudeCodeAlerts.moveDown",
+        "key": "alt+down",
         "when": "focusedView == claudeCodeAlerts.sessions"
       }
     ],
@@ -228,6 +311,19 @@
             "A terminal in the panel."
           ],
           "description": "Where New Session opens its terminal."
+        },
+        "claudeCodeAlerts.foldersPosition": {
+          "type": "string",
+          "enum": [
+            "bottom",
+            "top"
+          ],
+          "default": "bottom",
+          "enumDescriptions": [
+            "Sessions first, your folders below them.",
+            "Your folders first, sessions below them."
+          ],
+          "description": "Where your folders sit in the Claude Sessions view, on every level."
         }
       }
     }

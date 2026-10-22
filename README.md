@@ -54,9 +54,10 @@ is doing. Click one and you are in its terminal. The status bar shows how many a
 
 Start a new session with + in the view's title bar, or right-click a folder or session for New Session and New Folder:
 it opens a terminal tab that runs `claude` and lands in that folder. Sort sessions into your own folders, like files in
-the Explorer: drag sessions and
-folders where you want them, F2 or right-click to rename. Sessions outside a folder stay on top while they work or wait
-for you and move below the folders once they are idle. A session that needs you colors its name and every folder
+the Explorer: drag sessions and folders onto a folder, or right-click → Move to Folder… / Move to Top Level. Hover a
+folder for New Session, Rename and Delete (what was inside moves up a level). Sessions are listed most urgent first, then
+the one you wrote to last; your folders sit below them (setting `claudeCodeAlerts.foldersPosition` puts them on top), in
+your order: right-click → Move Up / Move Down, or Alt+↑ / Alt+↓. Each folder shows how many sessions it holds. A session that needs you colors its name and every folder
 above it, so a collapsed folder still shows that something inside waits. A resumed session (or one started again after
 `/clear` in the same tab) comes back to its folder.
 

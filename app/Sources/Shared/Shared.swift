@@ -37,12 +37,13 @@ public struct SessionInfo: Codable, Equatable {
     public var detail: String
     public var shellPid: Int32
     public var updated: Double
-    /// Its folder in the Sessions view (nil = top level) and its position there.
+    /// Its folder in the Sessions view (nil = top level).
     public var folder: String?
-    public var order: Double
+    /// When you last wrote to it (or it started): the list order.
+    public var touched: Double
 
     public init(id: String, name: String, state: String, detail: String, shellPid: Int32, updated: Double,
-                folder: String? = nil, order: Double = 0) {
+                folder: String? = nil, touched: Double = 0) {
         self.id = id
         self.name = name
         self.state = state
@@ -50,7 +51,7 @@ public struct SessionInfo: Codable, Equatable {
         self.shellPid = shellPid
         self.updated = updated
         self.folder = folder
-        self.order = order
+        self.touched = touched
     }
 }
 
@@ -58,13 +59,13 @@ public struct SessionInfo: Codable, Equatable {
 public struct FolderInfo: Codable, Equatable {
     public var id: String
     public var name: String
-    /// The folder it is in (nil = top level), and its position there.
+    /// The folder it is in (nil = top level), and its position among the folders there (Move Up / Move Down).
     public var parent: String?
-    public var order: Double
+    public var order: Double?
     /// Made in demo mode: shown only in demo mode, so recordings never show your own folders.
     public var demo: Bool?
 
-    public init(id: String, name: String, parent: String?, order: Double, demo: Bool? = nil) {
+    public init(id: String, name: String, parent: String?, order: Double?, demo: Bool? = nil) {
         self.id = id
         self.name = name
         self.parent = parent
@@ -93,11 +94,10 @@ public struct Msg: Codable {
     public var terminals: [TermInfo]?
     public var sessions: [SessionInfo]?
     public var folders: [FolderInfo]?
-    /// Folder operations: the folder (create: the one to make it in; move: the one to move into; nil = top level),
-    /// the moved items ("s:<session id>", "f:<folder id>") and the item they go in front of (nil = at the end).
+    /// Folder operations: the folder (create: the one to make it in; move: the one to move into; nil = top level)
+    /// and the moved items ("s:<session id>", "f:<folder id>").
     public var folder: String?
     public var ids: [String]?
-    public var before: String?
     public var focused: Bool?
     public var flag: Bool?
     public var entrypoint: String?

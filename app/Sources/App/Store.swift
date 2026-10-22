@@ -119,9 +119,8 @@ final class Store: ObservableObject {
         // Places of running sessions, and of the 300 sessions used last (for resuming them).
         let kept = (saved.places ?? [:]).filter { sessions[$0.key] == nil }.sorted { $0.value.used > $1.value.used }.prefix(300)
         places = Dictionary(uniqueKeysWithValues: Array(kept))
-        for (id, p) in saved.places ?? [:] where sessions[id] != nil { places[id] = Place(folder: p.folder, order: p.order, used: Date()) }
-        // Sessions from before folders existed: in the old list order.
-        for s in sortedSessions where places[s.id] == nil { place(s.id) }
+        for (id, p) in saved.places ?? [:] where sessions[id] != nil { places[id] = Place(folder: p.folder, used: Date()) }
+        for id in sessions.keys where places[id] == nil { place(id) }
     }
 
     /// Writes the state right away (on quit).
@@ -689,7 +688,7 @@ final class Store: ObservableObject {
     func sessionInfos() -> [SessionInfo] {
         sortedSessions.map {
             SessionInfo(id: $0.id, name: $0.name, state: $0.state.rawValue, detail: $0.detail, shellPid: $0.shellPid,
-                        updated: $0.updated.timeIntervalSince1970, folder: folderOf($0.id), order: places[$0.id]?.order ?? 0)
+                        updated: $0.updated.timeIntervalSince1970, folder: folderOf($0.id), touched: $0.touched.timeIntervalSince1970)
         }
     }
 
@@ -717,23 +716,28 @@ final class Store: ObservableObject {
 
     /// Gives a session its place once. A resumed session keeps its old one. A session in a terminal opened with New Session
     /// in a folder goes to that folder. A session that follows another in the same terminal (/clear, or a new `claude` in
-    /// that tab) takes over that one's place. Any other goes to the end of the top level.
+    /// that tab) takes over that one's place. Any other goes to the top level.
     private func place(_ id: String) {
         guard places[id] == nil, let s = sessions[id] else { return }
         let inTerminal = s.shellPid > 0 && (s.origin ?? "").contains("terminal")
         let prior = !inTerminal ? nil : sessions.values.first { $0.id != id && $0.shellPid == s.shellPid }?.id
             ?? lastInShell[s.shellPid].flatMap { Date().timeIntervalSince($0.at) < 300 ? $0.id : nil }
         if s.shellPid > 0, let e = expected.removeValue(forKey: s.shellPid), Date().timeIntervalSince(e.at) < 600 {
-            places[id] = Place(folder: e.folder, order: nextOrder(e.folder), used: Date())
-        } else if let prior, let p = places[prior] {
-            places[id] = Place(folder: p.folder, order: p.order, used: Date())
+            places[id] = Place(folder: e.folder, used: Date())
         } else {
-            places[id] = Place(folder: nil, order: nextOrder(nil), used: Date())
+            places[id] = Place(folder: prior.flatMap { places[$0]?.folder }, used: Date())
         }
     }
 
-    private func nextOrder(_ folder: String?) -> Double {
-        (sessions.keys.filter { folderOf($0) == folder }.compactMap { places[$0]?.order }.max() ?? -1) + 1
+    /// The folders directly in `parent` (nil = top level), in their order.
+    private func siblings(_ parent: String?) -> [String] {
+        folders.values.filter { $0.parent == parent }
+            .sorted { ($0.order ?? 0, $0.name.lowercased()) < ($1.order ?? 0, $1.name.lowercased()) }.map(\.id)
+    }
+
+    /// After the last folder in `parent`.
+    private func nextOrder(_ parent: String?) -> Double {
+        (folders.values.filter { $0.parent == parent }.compactMap(\.order).max() ?? -1) + 1
     }
 
     /// Folder `id` is `folder` itself or one of its subfolders.
@@ -753,23 +757,29 @@ final class Store: ObservableObject {
             let name = (msg.name ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             guard !name.isEmpty else { return }
             let parent = msg.folder.flatMap { folders[$0] != nil ? $0 : nil }
-            let order = (folders.values.filter { $0.parent == parent }.map(\.order).max() ?? -1) + 1
             let id = UUID().uuidString.lowercased()
-            folders[id] = FolderInfo(id: id, name: name, parent: parent, order: order, demo: demoMode ? true : nil)
+            folders[id] = FolderInfo(id: id, name: name, parent: parent, order: nextOrder(parent), demo: demoMode ? true : nil)
         case "rename":
             let name = (msg.name ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             guard let id = msg.folder, folders[id] != nil, !name.isEmpty else { return }
             folders[id]?.name = name
         case "delete":
-            // Only the folder goes: what was in it moves up one level, to the end.
+            // Only the folder goes: what was in it moves up one level.
             guard let id = msg.folder, let f = folders[id] else { return }
-            let inside = folders.values.filter { $0.parent == id }.sorted { $0.order < $1.order }.map { "f:\($0.id)" }
-                + sessions.keys.filter { folderOf($0) == id }.sorted { (places[$0]?.order ?? 0) < (places[$1]?.order ?? 0) }.map { "s:\($0)" }
-            move(inside, into: f.parent, before: nil)
+            for sub in siblings(id) { folders[sub]?.parent = f.parent; folders[sub]?.order = nextOrder(f.parent) }
             for (sid, p) in places where p.folder == id { places[sid]?.folder = f.parent }
             folders.removeValue(forKey: id)
         case "move":
-            move(msg.ids ?? [], into: msg.folder, before: msg.before)
+            move(msg.ids ?? [], into: msg.folder)
+        case "shift":
+            // Move Up / Move Down: swaps the folder with its neighbor.
+            guard let id = msg.folder, let f = folders[id] else { return }
+            var list = siblings(f.parent)
+            guard let i = list.firstIndex(of: id) else { return }
+            let j = msg.text == "up" ? i - 1 : i + 1
+            guard list.indices.contains(j) else { return }
+            list.swapAt(i, j)
+            for (n, sib) in list.enumerated() { folders[sib]?.order = Double(n) }
         case "expect":
             guard let pid = msg.shellPid, pid > 0, let f = msg.folder, folders[f] != nil else { return }
             expected[pid] = (f, Date())
@@ -780,28 +790,17 @@ final class Store: ObservableObject {
         changed()
     }
 
-    /// Moves sessions ("s:<id>") and folders ("f:<id>") into a folder (nil = top level), in front of the item `before`
-    /// or to the end. Like in the Explorer, folders come first and sessions after them, each in your order.
-    private func move(_ items: [String], into target: String?, before: String?) {
+    /// Moves sessions ("s:<id>") and folders ("f:<id>") into a folder (nil = top level). A folder never goes into itself
+    /// or one of its subfolders.
+    private func move(_ items: [String], into target: String?) {
         let parent = target.flatMap { folders[$0] != nil ? $0 : nil }
-        let movedFolders = items.filter { $0.hasPrefix("f:") }.map { String($0.dropFirst(2)) }
-            .filter { folders[$0] != nil && !isWithin(parent, $0) }
-        let movedSessions = items.filter { $0.hasPrefix("s:") }.map { String($0.dropFirst(2)) }.filter { sessions[$0] != nil }
-        let anchor = before.map { String($0.dropFirst(2)) }
-        if !movedFolders.isEmpty {
-            var list = folders.values.filter { $0.parent == parent && !movedFolders.contains($0.id) }
-                .sorted { $0.order < $1.order }.map(\.id)
-            let at = before?.hasPrefix("f:") == true ? list.firstIndex { $0 == anchor } ?? list.count : list.count
-            list.insert(contentsOf: movedFolders, at: at)
-            for (i, id) in list.enumerated() { folders[id]?.parent = parent; folders[id]?.order = Double(i) }
-        }
-        if !movedSessions.isEmpty {
-            var list = sessions.keys.filter { folderOf($0) == parent && !movedSessions.contains($0) }
-                .sorted { (places[$0]?.order ?? 0, $0) < (places[$1]?.order ?? 0, $1) }
-            let at = before?.hasPrefix("s:") == true ? list.firstIndex { $0 == anchor } ?? list.count
-                : before?.hasPrefix("f:") == true ? 0 : list.count
-            list.insert(contentsOf: movedSessions, at: at)
-            for (i, id) in list.enumerated() { places[id] = Place(folder: parent, order: Double(i), used: Date()) }
+        for item in items {
+            let id = String(item.dropFirst(2))
+            if item.hasPrefix("f:"), let f = folders[id], f.parent != parent, !isWithin(parent, id) {
+                folders[id]?.order = nextOrder(parent)
+                folders[id]?.parent = parent
+            }
+            if item.hasPrefix("s:"), sessions[id] != nil { places[id] = Place(folder: parent, used: Date()) }
         }
     }
 

@@ -35,8 +35,9 @@ let sessions = [];
 let folders = [];
 let sessionById = new Map();
 let folderById = new Map();
-// Most urgent signal inside each folder (folder id → state).
+// Most urgent signal inside each folder (folder id → state), and how many sessions it holds (with subfolders).
 let folderSignal = new Map();
+let folderCount = new Map();
 let status;
 let treeView;
 let reportTimer = null;
@@ -110,11 +111,12 @@ async function onMessage(m) {
     sessionById = new Map(sessions.map((s) => [s.id, s]));
     folderById = new Map(folders.map((f) => [f.id, f]));
     folderSignal = new Map();
+    folderCount = new Map();
     for (const s of sessions) {
-      if (!SIGNAL.includes(s.state)) continue;
-      for (let f = folderOf(s), n = 0; f && n < 64; f = parentOf(folderById.get(f)), n++) {
+      for (const f of ancestors(folderOf(s))) {
+        folderCount.set(f, (folderCount.get(f) || 0) + 1);
         const cur = folderSignal.get(f);
-        if (!cur || URGENCY[s.state] < URGENCY[cur]) folderSignal.set(f, s.state);
+        if (SIGNAL.includes(s.state) && (!cur || URGENCY[s.state] < URGENCY[cur])) folderSignal.set(f, s.state);
       }
     }
     tree.refresh();
@@ -126,6 +128,12 @@ async function onMessage(m) {
 // Folders that no longer exist count as the top level (null).
 function folderOf(s) { return s && s.folder && folderById.has(s.folder) ? s.folder : null; }
 function parentOf(f) { return f && f.parent && folderById.has(f.parent) ? f.parent : null; }
+// A folder id and every folder above it.
+function ancestors(id) {
+  const out = [];
+  for (let f = id, n = 0; f && n < 64; f = parentOf(folderById.get(f)), n++) out.push(f);
+  return out;
+}
 
 function ago(seconds) {
   const s = Math.max(0, Math.floor(Date.now() / 1000 - seconds));
@@ -136,7 +144,11 @@ function ago(seconds) {
 }
 
 // Tree elements are keys: "f:<folder id>" and "s:<session id>".
-const byOrder = (a, b) => a.order - b.order || a.name.localeCompare(b.name);
+const byName = (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+// Folders: your order (Move Up / Move Down). Sessions: most urgent first, then the one you wrote to last (only writing
+// moves a session, so rows don't jump while you look around).
+const byOrder = (a, b) => (a.order || 0) - (b.order || 0) || byName(a, b);
+const byUrgency = (a, b) => (URGENCY[a.state] ?? 9) - (URGENCY[b.state] ?? 9) || (b.touched || 0) - (a.touched || 0) || byName(a, b);
 const keyUri = (key) => vscode.Uri.from({ scheme: 'claude-session', path: '/' + key });
 
 class SessionTree {
@@ -145,16 +157,14 @@ class SessionTree {
     this.onDidChangeTreeData = this.emitter.event;
   }
   refresh() { this.emitter.fire(); }
-  // Like the Explorer: folders first, then sessions, each in the order you dragged them into. At the top level, sessions
-  // outside any folder that are busy or want you go above the folders, idle ones below them.
+  // On every level: the sessions, then the folders (or folders first, with "foldersPosition": "top").
   getChildren(key) {
     if (key && key.startsWith('s:')) return [];
     const parent = key ? key.slice(2) : null;
     const dirs = folders.filter((f) => parentOf(f) === parent).sort(byOrder).map((f) => 'f:' + f.id);
-    const list = sessions.filter((s) => folderOf(s) === parent).sort(byOrder);
-    const keys = (l) => l.map((s) => 's:' + s.id);
-    if (parent) return [...dirs, ...keys(list)];
-    return [...keys(list.filter((s) => s.state !== 'idle')), ...dirs, ...keys(list.filter((s) => s.state === 'idle'))];
+    const list = sessions.filter((s) => folderOf(s) === parent).sort(byUrgency).map((s) => 's:' + s.id);
+    const onTop = vscode.workspace.getConfiguration('claudeCodeAlerts').get('foldersPosition') === 'top';
+    return onTop ? [...dirs, ...list] : [...list, ...dirs];
   }
   getParent(key) {
     const parent = key.startsWith('f:') ? parentOf(folderById.get(key.slice(2))) : folderOf(sessionById.get(key.slice(2)));
@@ -165,7 +175,8 @@ class SessionTree {
       const f = folderById.get(key.slice(2)) || { name: '' };
       const item = new vscode.TreeItem(f.name, vscode.TreeItemCollapsibleState.Expanded);
       item.id = key;
-      item.contextValue = 'folder';
+      item.contextValue = parentOf(f) ? 'folder-nested' : 'folder';
+      item.description = folderCount.get(f.id) ? String(folderCount.get(f.id)) : undefined;
       item.iconPath = vscode.ThemeIcon.Folder;
       item.resourceUri = keyUri(key);
       return item;
@@ -174,7 +185,7 @@ class SessionTree {
     if (!s) return new vscode.TreeItem('');
     const item = new vscode.TreeItem(s.name);
     item.id = key;
-    item.contextValue = 'session';
+    item.contextValue = folderOf(s) ? 'session-nested' : 'session';
     item.resourceUri = keyUri(key);
     item.description = `${LABEL[s.state] || s.state} · ${ago(s.updated)}${s.detail ? ' · ' + s.detail : ''}`;
     // Colored dots are files, so a selected row keeps its state color (VS Code paints selected theme icons white).
@@ -208,8 +219,8 @@ const decorations = {
   }
 };
 
-// Drag sessions and folders: onto a folder = into it (at the end), onto a session = in front of it (in its folder),
-// onto empty space = top level (at the end).
+// Drag sessions and folders: onto a folder = into it, onto a session = into that session's folder, onto empty space =
+// top level.
 const dragAndDrop = {
   dragMimeTypes: [MIME],
   dropMimeTypes: [MIME],
@@ -219,9 +230,8 @@ const dragAndDrop = {
     if (!item) return;
     const ids = JSON.parse(await item.asString());
     if (target && ids.includes(target)) return;
-    const onFolder = target && target.startsWith('f:');
-    const folder = !target ? null : onFolder ? target.slice(2) : folderOf(sessionById.get(target.slice(2)));
-    send({ kind: 'folder', event: 'move', ids, folder, before: target && !onFolder ? target : null });
+    const folder = !target ? null : target.startsWith('f:') ? target.slice(2) : folderOf(sessionById.get(target.slice(2)));
+    send({ kind: 'folder', event: 'move', ids, folder });
   }
 };
 
@@ -276,6 +286,30 @@ async function rename(key) {
   send(isFolder
     ? { kind: 'folder', event: 'rename', folder: cur.id, name: name.trim() }
     : { kind: 'rename', sessionId: cur.id, name: name.trim() });
+}
+
+// Moves the clicked or selected rows into a folder picked from a list (or the top level).
+async function moveTo(key, keys) {
+  const ids = picked(key, keys);
+  const moving = ids.filter((k) => k.startsWith('f:')).map((k) => k.slice(2));
+  const path = (f) => ancestors(f.id).reverse().map((id) => folderById.get(id).name).join(' / ');
+  const choices = folders
+    .filter((f) => !ancestors(f.id).some((id) => moving.includes(id)))
+    .map((f) => ({ label: '$(folder) ' + path(f), folder: f.id }))
+    .sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true, sensitivity: 'base' }));
+  const pick = await vscode.window.showQuickPick([{ label: '$(root-folder) Top level', folder: null }, ...choices],
+    { placeHolder: ids.length > 1 ? `Move ${ids.length} items to…` : 'Move to…' });
+  if (pick) send({ kind: 'folder', event: 'move', ids, folder: pick.folder });
+}
+
+// Move Up / Move Down among the folders next to it.
+function shiftFolder(key, direction) {
+  key = key || treeView.selection[0];
+  if (key && key.startsWith('f:')) send({ kind: 'folder', event: 'shift', folder: key.slice(2), text: direction });
+}
+
+function moveToTop(key, keys) {
+  send({ kind: 'folder', event: 'move', ids: picked(key, keys), folder: null });
 }
 
 // Removes only the folder: what was in it moves up one level.
@@ -358,6 +392,11 @@ function activate(context) {
     vscode.commands.registerCommand('claudeCodeAlerts.newFolder', newFolder),
     vscode.commands.registerCommand('claudeCodeAlerts.rename', rename),
     vscode.commands.registerCommand('claudeCodeAlerts.deleteFolder', deleteFolder),
+    vscode.commands.registerCommand('claudeCodeAlerts.moveTo', moveTo),
+    vscode.commands.registerCommand('claudeCodeAlerts.moveToTop', moveToTop),
+    vscode.commands.registerCommand('claudeCodeAlerts.moveUp', (key) => shiftFolder(key, 'up')),
+    vscode.commands.registerCommand('claudeCodeAlerts.moveDown', (key) => shiftFolder(key, 'down')),
+    vscode.workspace.onDidChangeConfiguration((e) => { if (e.affectsConfiguration('claudeCodeAlerts.foldersPosition')) tree.refresh(); }),
     vscode.commands.registerCommand('claudeCodeAlerts.settings', () => execFile(CCA, ['settings'], () => {})),
     vscode.window.onDidOpenTerminal(reportSoon),
     vscode.window.onDidCloseTerminal(reportSoon),
