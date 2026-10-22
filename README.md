@@ -53,7 +53,8 @@ The **Claude Sessions** view in VS Code's Explorer lists every running Claude se
 is doing. Click one and you are in its terminal. The status bar shows how many are waiting.
 
 Sort them into your own folders, like files in the Explorer: New Folder in the view's title bar, drag sessions and
-folders where you want them, F2 or right-click to rename. A session that needs you colors its name and every folder
+folders where you want them, F2 or right-click to rename. Sessions outside a folder stay on top while they work or wait
+for you and move below the folders once they are idle. A session that needs you colors its name and every folder
 above it, so a collapsed folder still shows that something inside waits. A resumed session (or one started again after
 `/clear` in the same tab) comes back to its folder.
 

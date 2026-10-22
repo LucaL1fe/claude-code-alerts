@@ -145,14 +145,16 @@ class SessionTree {
     this.onDidChangeTreeData = this.emitter.event;
   }
   refresh() { this.emitter.fire(); }
-  // Like the Explorer: folders first, then sessions, each in the order you dragged them into.
+  // Like the Explorer: folders first, then sessions, each in the order you dragged them into. At the top level, sessions
+  // outside any folder that are busy or want you go above the folders, idle ones below them.
   getChildren(key) {
     if (key && key.startsWith('s:')) return [];
     const parent = key ? key.slice(2) : null;
-    return [
-      ...folders.filter((f) => parentOf(f) === parent).sort(byOrder).map((f) => 'f:' + f.id),
-      ...sessions.filter((s) => folderOf(s) === parent).sort(byOrder).map((s) => 's:' + s.id)
-    ];
+    const dirs = folders.filter((f) => parentOf(f) === parent).sort(byOrder).map((f) => 'f:' + f.id);
+    const list = sessions.filter((s) => folderOf(s) === parent).sort(byOrder);
+    const keys = (l) => l.map((s) => 's:' + s.id);
+    if (parent) return [...dirs, ...keys(list)];
+    return [...keys(list.filter((s) => s.state !== 'idle')), ...dirs, ...keys(list.filter((s) => s.state === 'idle'))];
   }
   getParent(key) {
     const parent = key.startsWith('f:') ? parentOf(folderById.get(key.slice(2))) : folderOf(sessionById.get(key.slice(2)));
