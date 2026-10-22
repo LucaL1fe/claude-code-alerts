@@ -175,7 +175,10 @@ class SessionTree {
       const f = folderById.get(key.slice(2)) || { name: '' };
       const item = new vscode.TreeItem(f.name, vscode.TreeItemCollapsibleState.Expanded);
       item.id = key;
-      item.contextValue = parentOf(f) ? 'folder-nested' : 'folder';
+      // Words the menus test: nested (can move to the top level), canUp / canDown (Move Up / Move Down).
+      const sibs = folders.filter((x) => parentOf(x) === parentOf(f)).sort(byOrder);
+      item.contextValue = ['folder', parentOf(f) && 'nested', sibs[0] !== f && 'canUp', sibs[sibs.length - 1] !== f && 'canDown']
+        .filter(Boolean).join(' ');
       item.description = folderCount.get(f.id) ? String(folderCount.get(f.id)) : undefined;
       item.iconPath = vscode.ThemeIcon.Folder;
       item.resourceUri = keyUri(key);
@@ -185,7 +188,7 @@ class SessionTree {
     if (!s) return new vscode.TreeItem('');
     const item = new vscode.TreeItem(s.name);
     item.id = key;
-    item.contextValue = folderOf(s) ? 'session-nested' : 'session';
+    item.contextValue = folderOf(s) ? 'session nested' : 'session';
     item.resourceUri = keyUri(key);
     item.description = `${LABEL[s.state] || s.state} · ${ago(s.updated)}${s.detail ? ' · ' + s.detail : ''}`;
     // Colored dots are files, so a selected row keeps its state color (VS Code paints selected theme icons white).
