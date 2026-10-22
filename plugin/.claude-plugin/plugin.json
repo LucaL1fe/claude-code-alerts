@@ -1,7 +1,7 @@
 {
   "name": "claude-code-alerts",
   "description": "Mac alerts for Claude Code: see which session is done or needs you, jump to the exact VS Code terminal tab. Needs the Claude Code Alerts app.",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "author": { "name": "LucaL1fe" },
   "homepage": "https://github.com/LucaL1fe/claude-code-alerts",
   "license": "MIT"
