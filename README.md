@@ -55,7 +55,8 @@ is doing. Click one and you are in its terminal. The status bar shows how many a
 Start a new session with + in the view's title bar, or right-click a folder or session for New Session and New Folder:
 it opens a terminal tab that runs `claude` and lands in that folder. Sort sessions into your own folders, like files in
 the Explorer: drag sessions and folders onto a folder, or right-click → Move to Folder… / Move to Top Level. Hover a
-folder for New Session, Rename and Delete (what was inside moves up a level). Sessions are listed most urgent first, then
+folder for New Session, Rename and Delete (what was inside moves up a level); hover a session for Rename and Remove
+from List (it keeps running and comes back as soon as you write to it or it needs you). Sessions are listed most urgent first, then
 the one you wrote to last; your folders sit below them (setting `claudeCodeAlerts.foldersPosition` puts them on top), in
 your order: right-click → Move Up / Move Down, or Alt+↑ / Alt+↓. Each folder shows how many sessions it holds. A session that needs you colors its name and every folder
 above it, so a collapsed folder still shows that something inside waits. A resumed session (or one started again after
@@ -174,6 +175,10 @@ uses your Mac · when you count as away · open at login.
 | the Claude desktop app | brings the Claude app forward |
 | iTerm, Ghostty, Terminal, … | brings that app forward |
 | the background (`claude -p`, scheduled tasks, scripts) | nothing to jump to: listed quietly, a pill only on errors |
+
+**Why no pill from the Claude app?** With the Claude app in front, the session you last wrote to there finishing gets no
+pill: you are looking at it (like the VS Code tab in front). A scheduled task of the Claude app finishing a run gets none
+either; a question or an error from it still does, and once you write in that session it alerts like any other.
 
 **Does it work without VS Code?** Yes. Alerts, the menu bar and `cca` work with Claude Code in any terminal. Only the
 exact-tab jump and the Claude Sessions view need VS Code.

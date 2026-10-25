@@ -79,6 +79,10 @@ struct Session: Codable, Identifiable, Equatable {
     /// When the session started, and when you last wrote to it (list order).
     var started: Date? = nil
     var lastPrompt: Date? = nil
+    /// The Claude desktop app's scheduled task this session runs (its task id).
+    var scheduledTask: String? = nil
+    /// The turn running now was started by a schedule, not by you (a scheduled task's first turn).
+    var unattended = false
 
     /// Your last interaction with the session, for the list order.
     var touched: Date { lastPrompt ?? started ?? .distantPast }
@@ -92,6 +96,7 @@ struct Session: Codable, Identifiable, Equatable {
 
     enum CodingKeys: String, CodingKey {
         case id, autoName, customName, claudePid, shellPid, tty, cwd, transcript, state, detail, updated, notifyPending, origin, started, lastPrompt
+        case scheduledTask, unattended
     }
 
     init(id: String, autoName: String, customName: String?, claudePid: Int32, shellPid: Int32, tty: String?, cwd: String,
@@ -118,6 +123,8 @@ struct Session: Codable, Identifiable, Equatable {
         origin = try c.decodeIfPresent(String.self, forKey: .origin)
         started = try c.decodeIfPresent(Date.self, forKey: .started)
         lastPrompt = try c.decodeIfPresent(Date.self, forKey: .lastPrompt)
+        scheduledTask = try c.decodeIfPresent(String.self, forKey: .scheduledTask)
+        unattended = try c.decodeIfPresent(Bool.self, forKey: .unattended) ?? false
     }
 }
 

@@ -2,7 +2,7 @@
   "name": "claude-code-alerts",
   "displayName": "Claude Code Alerts: notifications for Claude Code terminals",
   "description": "Know which Claude Code session is done or needs you, and jump to the exact VS Code terminal tab. Companion of the Claude Code Alerts Mac app.",
-  "version": "0.4.3",
+  "version": "0.5.0",
   "publisher": "lucal1fe",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -94,6 +94,12 @@
         "icon": "$(trash)"
       },
       {
+        "command": "claudeCodeAlerts.removeSession",
+        "title": "Remove from List",
+        "category": "Claude Code Alerts",
+        "icon": "$(trash)"
+      },
+      {
         "command": "claudeCodeAlerts.moveTo",
         "title": "Move to Folder...",
         "category": "Claude Code Alerts"
@@ -147,12 +153,17 @@
         },
         {
           "command": "claudeCodeAlerts.rename",
-          "when": "view == claudeCodeAlerts.sessions && viewItem =~ /^folder/",
+          "when": "view == claudeCodeAlerts.sessions",
           "group": "inline@4"
         },
         {
           "command": "claudeCodeAlerts.deleteFolder",
           "when": "view == claudeCodeAlerts.sessions && viewItem =~ /^folder/",
+          "group": "inline@5"
+        },
+        {
+          "command": "claudeCodeAlerts.removeSession",
+          "when": "view == claudeCodeAlerts.sessions && viewItem =~ /^session/",
           "group": "inline@5"
         },
         {
@@ -199,6 +210,11 @@
           "command": "claudeCodeAlerts.deleteFolder",
           "when": "view == claudeCodeAlerts.sessions && viewItem =~ /^folder/",
           "group": "4_edit@2"
+        },
+        {
+          "command": "claudeCodeAlerts.removeSession",
+          "when": "view == claudeCodeAlerts.sessions && viewItem =~ /^session/",
+          "group": "4_edit@2"
         }
       ],
       "commandPalette": [
@@ -212,6 +228,10 @@
         },
         {
           "command": "claudeCodeAlerts.deleteFolder",
+          "when": "false"
+        },
+        {
+          "command": "claudeCodeAlerts.removeSession",
           "when": "false"
         },
         {

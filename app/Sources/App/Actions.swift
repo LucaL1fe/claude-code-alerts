@@ -36,7 +36,7 @@ final class Actions {
             return
         }
         if origin == "desktop" {
-            NSRunningApplication.runningApplications(withBundleIdentifier: "com.anthropic.claudefordesktop").first?.activate()
+            NSRunningApplication.runningApplications(withBundleIdentifier: Store.claudeDesktop).first?.activate()
             return
         }
         if origin.hasPrefix("terminal") {

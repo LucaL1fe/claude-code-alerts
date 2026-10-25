@@ -17,8 +17,16 @@ final class Store: ObservableObject {
 
     @Published private(set) var sessions: [String: Session] = [:] {
         // Which terminal a session just left, so the next session there (after /clear) takes over its place.
-        didSet { for (id, s) in oldValue where sessions[id] == nil && s.shellPid > 0 { lastInShell[s.shellPid] = (id, Date()) } }
+        didSet {
+            for (id, s) in oldValue where sessions[id] == nil {
+                if s.shellPid > 0 { lastInShell[s.shellPid] = (id, Date()) }
+                hidden.remove(id)
+            }
+        }
     }
+    /// Sessions you took off the lists (trash in the Sessions view). They keep running; one comes back when you write
+    /// to it or it needs you.
+    @Published private(set) var hidden: Set<String> = []
     /// Your folders in the Sessions view, and where each session sits in it.
     @Published private(set) var folders: [String: FolderInfo] = [:]
     private(set) var places: [String: Place] = [:]
@@ -89,7 +97,7 @@ final class Store: ObservableObject {
     /// urgency, the session you last wrote to comes first. That only changes when you write (or a session starts),
     /// never during tool calls, so rows don't jump around.
     var sortedSessions: [Session] {
-        sessions.values.filter { visible($0.id) && !($0.id.hasPrefix("debug-") && $0.state == .idle) }.sorted { a, b in
+        sessions.values.filter { visible($0.id) && !hidden.contains($0.id) && !($0.id.hasPrefix("debug-") && $0.state == .idle) }.sorted { a, b in
             if a.state.urgency != b.state.urgency { return a.state.urgency < b.state.urgency }
             return a.touched != b.touched ? a.touched > b.touched : a.id < b.id
         }
@@ -102,11 +110,12 @@ final class Store: ObservableObject {
         var alerts: [AlertItem]
         var folders: [FolderInfo]?
         var places: [String: Place]?
+        var hidden: [String]?
     }
 
     private var snapshot: Saved {
         Saved(sessions: sessions, alerts: alerts.filter { $0.kind != .mac && $0.kind != .free },
-              folders: Array(folders.values), places: places)
+              folders: Array(folders.values), places: places, hidden: Array(hidden))
     }
 
     func load() {
@@ -115,6 +124,7 @@ final class Store: ObservableObject {
         sessions = saved.sessions.filter { $0.key.hasPrefix("debug-") || Proc.isAlive($0.value.claudePid) }
         alerts = saved.alerts.filter { sessions[$0.sessionId] != nil && $0.kind != .mac && $0.kind != .free }
         for i in alerts.indices { alerts[i].queued = false }
+        hidden = Set((saved.hidden ?? []).filter { sessions[$0] != nil })
         folders = Dictionary((saved.folders ?? []).map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         // Places of running sessions, and of the 300 sessions used last (for resuming them).
         let kept = (saved.places ?? [:]).filter { sessions[$0.key] == nil }.sorted { $0.value.used > $1.value.used }.prefix(300)
@@ -289,7 +299,15 @@ final class Store: ObservableObject {
             // You are at this session: its reminders are answered.
             alerts.removeAll { $0.sessionId == id }
             tabTitles.forget(id)
-            if var s = sessions[id] { s.notifyPending = false; s.lastPrompt = Date(); sessions[id] = s }
+            hidden.remove(id)
+            if var s = sessions[id] {
+                // A scheduled task's first prompt comes from its schedule; every later one is you writing to it.
+                if s.origin == "desktop" && s.lastPrompt == nil && s.scheduledTask == nil {
+                    s.scheduledTask = ClaudeSessions.desktopScheduledTask(pid: s.claudePid)
+                }
+                s.unattended = s.scheduledTask != nil && s.lastPrompt == nil
+                s.notifyPending = false; s.lastPrompt = Date(); sessions[id] = s
+            }
             setState(id, .working, "Working")
         case "PostToolUse":
             let tool = msg.toolName.map { $0.hasPrefix("mcp__") ? String($0.split(separator: "_").last ?? "") : $0 } ?? ""
@@ -391,11 +409,14 @@ final class Store: ObservableObject {
         guard let s = sessions[id] else { return }
         // Runs without a window (scheduled tasks, claude -p): listed, but no pill unless it failed or you want them.
         if s.isBackground && kind != .error && !settings.backgroundPills { return }
+        // The same for a turn a schedule started in the Claude desktop app finishing; a question or an error still comes.
+        if s.unattended && kind == .done && !settings.backgroundPills { return }
         if isLookingAt(s) {
             // You see it already: a finished session needs no dot or alert.
             if kind == .done { setState(id, .idle) }
             return
         }
+        hidden.remove(id)
         alerts.removeAll { $0.sessionId == id && $0.kind != .mac && $0.kind != .free }
         var alert = AlertItem(sessionId: id, kind: kind, text: text)
         alert.queued = away
@@ -414,9 +435,20 @@ final class Store: ObservableObject {
         if let s { Actions.shared.speak("\(s.name), \(kind.label)") }
     }
 
+    static let claudeDesktop = "com.anthropic.claudefordesktop"
+
     /// True when that session's terminal is the active tab of the focused VS Code window and VS Code is in front.
+    /// For a session of the Claude desktop app: the app is in front and this is the session you wrote to last there
+    /// (the app doesn't tell which session it shows; the one you just wrote in is the one you have open).
     func isLookingAt(_ s: Session) -> Bool {
-        guard NSWorkspace.shared.frontmostApplication?.bundleIdentifier == "com.microsoft.VSCode", !away else { return false }
+        guard !away else { return false }
+        let front = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+        if s.origin == "desktop" {
+            guard front == Self.claudeDesktop, s.lastPrompt != nil, !s.unattended else { return false }
+            let mine = sessions.values.filter { $0.origin == "desktop" && !$0.unattended && $0.lastPrompt != nil }
+            return mine.max { $0.lastPrompt! < $1.lastPrompt! }?.id == s.id
+        }
+        guard front == "com.microsoft.VSCode" else { return false }
         return windows.values.contains { w in w.focused && w.terminals.contains { $0.pid == s.shellPid && $0.active } }
     }
 
@@ -554,7 +586,14 @@ final class Store: ObservableObject {
     private func classifyIfNeeded(_ id: String, entrypoint: String? = nil) {
         guard var s = sessions[id], s.origin == nil || entrypoint != nil, !id.hasPrefix("debug-") else { return }
         let o = Self.classify(claudePid: s.claudePid, entrypoint: entrypoint)
-        if s.origin != o { s.origin = o; sessions[id] = s }
+        guard s.origin != o else { return }
+        s.origin = o
+        if o == "desktop" && s.lastPrompt == nil {
+            // A scheduled task of the Claude app: its first turn runs without you.
+            s.scheduledTask = ClaudeSessions.desktopScheduledTask(pid: s.claudePid)
+            s.unattended = s.scheduledTask != nil
+        }
+        sessions[id] = s
     }
 
     // MARK: - Discovery
@@ -771,6 +810,14 @@ final class Store: ObservableObject {
             folders.removeValue(forKey: id)
         case "move":
             move(msg.ids ?? [], into: msg.folder)
+        case "hide":
+            // Off the lists, not ended: it keeps running and comes back when you write to it or it needs you.
+            for item in msg.ids ?? [] where item.hasPrefix("s:") {
+                let id = String(item.dropFirst(2))
+                guard sessions[id] != nil else { continue }
+                markSeen(id)
+                hidden.insert(id)
+            }
         case "shift":
             // Move Up / Move Down: swaps the folder with its neighbor.
             guard let id = msg.folder, let f = folders[id] else { return }

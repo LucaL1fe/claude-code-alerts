@@ -180,6 +180,8 @@ class SessionTree {
       item.contextValue = ['folder', parentOf(f) && 'nested', sibs[0] !== f && 'canUp', sibs[sibs.length - 1] !== f && 'canDown']
         .filter(Boolean).join(' ');
       item.description = folderCount.get(f.id) ? String(folderCount.get(f.id)) : undefined;
+      // Without a tooltip VS Code shows the row's internal URI ("f:ea0f…").
+      item.tooltip = f.name;
       item.iconPath = vscode.ThemeIcon.Folder;
       item.resourceUri = keyUri(key);
       return item;
@@ -315,11 +317,15 @@ function moveToTop(key, keys) {
   send({ kind: 'folder', event: 'move', ids: picked(key, keys), folder: null });
 }
 
-// Removes only the folder: what was in it moves up one level.
-function deleteFolder(key, keys) {
-  for (const k of picked(key, keys)) {
+// Trash: a folder goes, and what was in it moves up one level. A session only leaves the list: it keeps running and
+// comes back when you write to it or it needs you.
+function remove(key, keys) {
+  const ids = picked(key, keys);
+  for (const k of ids) {
     if (k.startsWith('f:')) send({ kind: 'folder', event: 'delete', folder: k.slice(2) });
   }
+  const hide = ids.filter((k) => k.startsWith('s:'));
+  if (hide.length) send({ kind: 'folder', event: 'hide', ids: hide });
 }
 
 function updateStatus() {
@@ -397,7 +403,8 @@ function activate(context) {
     vscode.commands.registerCommand('claudeCodeAlerts.newSessionTopLevel', () => newSession(null)),
     vscode.commands.registerCommand('claudeCodeAlerts.newFolderTopLevel', () => newFolder(null)),
     vscode.commands.registerCommand('claudeCodeAlerts.rename', rename),
-    vscode.commands.registerCommand('claudeCodeAlerts.deleteFolder', deleteFolder),
+    vscode.commands.registerCommand('claudeCodeAlerts.deleteFolder', remove),
+    vscode.commands.registerCommand('claudeCodeAlerts.removeSession', remove),
     vscode.commands.registerCommand('claudeCodeAlerts.moveTo', moveTo),
     vscode.commands.registerCommand('claudeCodeAlerts.moveToTop', moveToTop),
     vscode.commands.registerCommand('claudeCodeAlerts.moveUp', (key) => shiftFolder(key, 'up')),

@@ -307,4 +307,27 @@ public enum ClaudeSessions {
         }
         return out
     }
+
+    /// The scheduled task behind a session of the Claude desktop app (its task id), from the app's own record of the
+    /// session (~/Library/Application Support/Claude/claude-code-sessions/<account>/<org>/<host session id>.json).
+    public static func desktopScheduledTask(pid: Int32) -> String? {
+        let file = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/sessions/\(pid).json")
+        guard let data = try? Data(contentsOf: file), let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let host = obj["hostSessionId"] as? String else { return nil }
+        return desktopScheduledTask(hostSessionId: host)
+    }
+
+    public static func desktopScheduledTask(hostSessionId host: String) -> String? {
+        guard !host.isEmpty, !host.contains("/") else { return nil }
+        let fm = FileManager.default
+        let base = fm.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/Claude/claude-code-sessions")
+        for account in (try? fm.contentsOfDirectory(at: base, includingPropertiesForKeys: nil)) ?? [] {
+            for org in (try? fm.contentsOfDirectory(at: account, includingPropertiesForKeys: nil)) ?? [] {
+                guard let d = try? Data(contentsOf: org.appendingPathComponent(host + ".json")) else { continue }
+                let record = try? JSONSerialization.jsonObject(with: d) as? [String: Any]
+                return record?["scheduledTaskId"] as? String
+            }
+        }
+        return nil
+    }
 }
