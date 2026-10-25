@@ -341,6 +341,15 @@ function remove(key, keys) {
   if (hide.length) send({ kind: 'folder', event: 'hide', ids: hide });
 }
 
+// Set State ▸ (right-click a session): your own reminder, without a pill or sound. Needs You and Plan Ready stay until
+// you write to the session, Done goes when you open it (like an unread mail), Idle clears it.
+function setState(state) {
+  return (key, keys) => {
+    const ids = picked(key, keys).filter((k) => k.startsWith('s:'));
+    if (ids.length) send({ kind: 'folder', event: 'state', ids, state });
+  };
+}
+
 function updateStatus() {
   const waiting = sessions.filter((s) => ['input', 'review', 'error', 'done'].includes(s.state));
   if (!sessions.length) { status.hide(); return; }
@@ -703,6 +712,10 @@ function activate(context) {
     vscode.commands.registerCommand('claudeCodeAlerts.removeSession', remove),
     vscode.commands.registerCommand('claudeCodeAlerts.moveTo', moveTo),
     vscode.commands.registerCommand('claudeCodeAlerts.moveToTop', moveToTop),
+    vscode.commands.registerCommand('claudeCodeAlerts.setStateInput', setState('input')),
+    vscode.commands.registerCommand('claudeCodeAlerts.setStateReview', setState('review')),
+    vscode.commands.registerCommand('claudeCodeAlerts.setStateDone', setState('done')),
+    vscode.commands.registerCommand('claudeCodeAlerts.setStateIdle', setState('idle')),
     vscode.commands.registerCommand('claudeCodeAlerts.moveUp', (key) => shiftFolder(key, 'up')),
     vscode.commands.registerCommand('claudeCodeAlerts.moveDown', (key) => shiftFolder(key, 'down')),
     vscode.workspace.onDidChangeConfiguration((e) => { if (e.affectsConfiguration('claudeCodeAlerts.foldersPosition')) tree.refresh(); }),

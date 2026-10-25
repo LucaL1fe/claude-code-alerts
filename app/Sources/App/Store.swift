@@ -79,7 +79,7 @@ final class Store: ObservableObject {
         let fold = TimeInterval(settings.foldSeconds)
         let now = Date()
         return alerts.filter { a in
-            guard a.status == .active, !a.queued, visible(a.sessionId) else { return false }
+            guard a.status == .active, !a.queued, a.source != "manual", visible(a.sessionId) else { return false }
             if fold > 0, a.kind != .mac, a.kind != .free, now.timeIntervalSince(a.shownAt ?? a.created) > fold { return false }
             return true
         }.sorted(by: Self.order)
@@ -517,7 +517,8 @@ final class Store: ObservableObject {
     func markSeen(_ sessionId: String) {
         let before = alerts.count
         if var s = sessions[sessionId], s.notifyPending { s.notifyPending = false; sessions[sessionId] = s }
-        alerts.removeAll { $0.sessionId == sessionId && $0.kind != .mac }
+        // A Needs You or Plan Ready you set yourself stays until you write to the session.
+        alerts.removeAll { $0.sessionId == sessionId && $0.kind != .mac && !($0.source == "manual" && $0.kind != .done) }
         if let s = sessions[sessionId], s.state == .done || s.state == .error { setState(sessionId, .idle) }
         if alerts.count != before { save() }
     }
@@ -706,6 +707,7 @@ final class Store: ObservableObject {
     // MARK: - VS Code
 
     private func handleVSCode(_ msg: Msg, _ conn: Conn) {
+        let before = windows[conn.id]
         var w = windows[conn.id] ?? VSWindow(conn: conn, windowId: msg.windowId ?? conn.id.uuidString, workspace: nil, terminals: [], focused: false)
         if let ws = msg.workspace { w.workspace = ws }
         if let t = msg.terminals { w.terminals = t }
@@ -722,7 +724,10 @@ final class Store: ObservableObject {
         if w.focused, let active = w.terminals.first(where: { $0.active }),
            let s = sessions.values.first(where: { $0.shellPid == active.pid }),
            NSWorkspace.shared.frontmostApplication?.bundleIdentifier == "com.microsoft.VSCode" {
-            if alerts.contains(where: { $0.sessionId == s.id && $0.kind != .mac && $0.status == .active })
+            // A state you set yourself on the tab you are in counts as seen only once you come back to that tab.
+            let cameBack = before?.focused != true || before?.terminals.first(where: { $0.active })?.pid != active.pid
+            let mine = alerts.contains { $0.sessionId == s.id && $0.source == "manual" }
+            if cameBack || !mine, alerts.contains(where: { $0.sessionId == s.id && $0.kind != .mac && $0.status == .active })
                 || s.state == .done || s.state == .error {
                 markSeen(s.id)
                 changed()
@@ -820,6 +825,25 @@ final class Store: ObservableObject {
             folders.removeValue(forKey: id)
         case "move":
             move(msg.ids ?? [], into: msg.folder)
+        case "state":
+            // Set State in the Sessions view: your own reminder (no pill, no sound). Needs You and Plan Ready stay until
+            // you write to the session; Done goes when you open it, like an unread mail; Idle clears it.
+            let kind = AState(rawValue: msg.state ?? "")
+            for item in msg.ids ?? [] where item.hasPrefix("s:") {
+                let id = String(item.dropFirst(2))
+                guard sessions[id] != nil else { continue }
+                alerts.removeAll { $0.sessionId == id && $0.kind != .mac && $0.kind != .free }
+                guard let kind, [.input, .review, .done].contains(kind) else {
+                    markSeen(id)
+                    setState(id, .idle)
+                    continue
+                }
+                hidden.remove(id)
+                setState(id, kind)
+                var alert = AlertItem(sessionId: id, kind: kind, text: "Marked by you")
+                alert.source = "manual"
+                alerts.append(alert)
+            }
         case "hide":
             // Off the lists, not ended: it keeps running and comes back when you write to it or it needs you.
             for item in msg.ids ?? [] where item.hasPrefix("s:") {

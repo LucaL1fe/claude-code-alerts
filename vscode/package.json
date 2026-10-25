@@ -2,7 +2,7 @@
   "name": "claude-code-alerts",
   "displayName": "Claude Code Alerts: notifications for Claude Code terminals",
   "description": "Know which Claude Code session is done or needs you, and jump to the exact VS Code terminal tab. Companion of the Claude Code Alerts Mac app.",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "publisher": "lucal1fe",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -120,6 +120,26 @@
         "title": "Move Down",
         "category": "Claude Code Alerts",
         "icon": "$(arrow-down)"
+      },
+      {
+        "command": "claudeCodeAlerts.setStateInput",
+        "title": "Needs You",
+        "category": "Claude Code Alerts"
+      },
+      {
+        "command": "claudeCodeAlerts.setStateReview",
+        "title": "Plan Ready",
+        "category": "Claude Code Alerts"
+      },
+      {
+        "command": "claudeCodeAlerts.setStateDone",
+        "title": "Done",
+        "category": "Claude Code Alerts"
+      },
+      {
+        "command": "claudeCodeAlerts.setStateIdle",
+        "title": "Idle",
+        "category": "Claude Code Alerts"
       }
     ],
     "menus": {
@@ -180,6 +200,11 @@
           "command": "claudeCodeAlerts.goto",
           "when": "view == claudeCodeAlerts.sessions && viewItem =~ /^session/",
           "group": "2_go"
+        },
+        {
+          "submenu": "claudeCodeAlerts.setState",
+          "when": "view == claudeCodeAlerts.sessions && viewItem =~ /^session/",
+          "group": "2_go@2"
         },
         {
           "command": "claudeCodeAlerts.moveTo",
@@ -257,6 +282,40 @@
         {
           "command": "claudeCodeAlerts.newFolder",
           "when": "false"
+        },
+        {
+          "command": "claudeCodeAlerts.setStateInput",
+          "when": "false"
+        },
+        {
+          "command": "claudeCodeAlerts.setStateReview",
+          "when": "false"
+        },
+        {
+          "command": "claudeCodeAlerts.setStateDone",
+          "when": "false"
+        },
+        {
+          "command": "claudeCodeAlerts.setStateIdle",
+          "when": "false"
+        }
+      ],
+      "claudeCodeAlerts.setState": [
+        {
+          "command": "claudeCodeAlerts.setStateInput",
+          "group": "1_state@1"
+        },
+        {
+          "command": "claudeCodeAlerts.setStateReview",
+          "group": "1_state@2"
+        },
+        {
+          "command": "claudeCodeAlerts.setStateDone",
+          "group": "1_state@3"
+        },
+        {
+          "command": "claudeCodeAlerts.setStateIdle",
+          "group": "2_clear@1"
         }
       ]
     },
@@ -383,7 +442,13 @@
           "description": "Where your folders sit in the Claude Sessions view, on every level."
         }
       }
-    }
+    },
+    "submenus": [
+      {
+        "id": "claudeCodeAlerts.setState",
+        "label": "Set State"
+      }
+    ]
   },
   "capabilities": {
     "untrustedWorkspaces": {

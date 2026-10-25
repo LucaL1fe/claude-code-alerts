@@ -56,7 +56,9 @@ Start a new session with + in the view's title bar, or right-click a folder or s
 it opens a terminal tab that runs `claude` and lands in that folder. Sort sessions into your own folders, like files in
 the Explorer: drag sessions and folders onto a folder, or right-click → Move to Folder… / Move to Top Level. Hover a
 folder for New Session, Rename and Delete (what was inside moves up a level); hover a session for Rename and Remove
-from List (it keeps running and comes back as soon as you write to it or it needs you). Sessions are listed most urgent first, then
+from List (it keeps running and comes back as soon as you write to it or it needs you). Right-click a session →
+Set State ▸ Needs You / Plan Ready / Done / Idle marks it yourself, as a reminder for later (no pill, no sound): Needs You
+and Plan Ready stay until you write to it, Done goes when you open it (like an unread mail), Idle clears it. Sessions are listed most urgent first, then
 the one you wrote to last; your folders sit below them (setting `claudeCodeAlerts.foldersPosition` puts them on top), in
 your order: right-click → Move Up / Move Down, or Alt+↑ / Alt+↓. Each folder shows how many sessions it holds. A session that needs you colors its name and every folder
 above it, so a collapsed folder still shows that something inside waits. A resumed session (or one started again after
