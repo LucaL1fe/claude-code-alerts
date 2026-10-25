@@ -297,6 +297,9 @@ final class Store: ObservableObject {
         switch event {
         case "SessionStart":
             setState(id, .idle)
+            // A resumed session shows its own title at once, without the "Claude Code" that makes VS Code show a
+            // Claude tab's title (else the tab shows the program name, e.g. "2.1.310"): write it once.
+            if msg.source == "resume", let s = sessions[id] { tabTitles.restore([s], enabled: settings.tabDots) }
             var reply = Msg(kind: "ok")
             reply.name = sessions[id]?.customName
             conn.send(reply)

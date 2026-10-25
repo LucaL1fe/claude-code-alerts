@@ -267,11 +267,11 @@ async function newFolder(key) {
 }
 
 // A terminal tab for a Claude session.
-function claudeTerminal(cwd) {
+function claudeTerminal(cwd, location) {
   const cfg = vscode.workspace.getConfiguration('claudeCodeAlerts');
   return vscode.window.createTerminal({
     cwd,
-    location: cfg.get('newSessionLocation') === 'panel' ? vscode.TerminalLocation.Panel : vscode.TerminalLocation.Editor,
+    location: location || (cfg.get('newSessionLocation') === 'panel' ? vscode.TerminalLocation.Panel : vscode.TerminalLocation.Editor),
     // VS Code may have been opened from inside a Claude session: without this, claude would think it is nested.
     env: Object.fromEntries(NESTED.map((k) => [k, null]))
   });
@@ -490,7 +490,7 @@ async function openTerminals() {
   // VS Code can show one shell twice (in the panel and in an editor tab): it counts once, as the tab.
   const panel = list.filter((x) => !editor.includes(x) && !editor.some((y) => y.pid === x.pid))
     .filter((x, i, all) => all.findIndex((y) => y.pid === x.pid) === i);
-  return [...panel, ...editor]
+  return [...panel.map((x) => ({ ...x, panel: true })), ...editor]
     .map((x) => ({ ...x, cwd: dirs.get(x.pid) || null, session: inShell.get(x.pid) || null }));
 }
 
@@ -514,7 +514,7 @@ async function save() {
   }
   for (const pid of held.keys()) if (!terminals.some((x) => x.pid === pid)) held.delete(pid);
   if (waiting) setTimeout(saveSoon, GRACE);
-  const list = terminals.map((x) => ({ cwd: x.cwd, session: x.session }));
+  const list = terminals.map((x) => ({ cwd: x.cwd, session: x.session, ...(x.panel ? { panel: true } : {}) }));
   const cur = ctx.workspaceState.get(OPEN);
   if (!cur || now - cur.at > 3600000 || JSON.stringify(cur.terminals) !== JSON.stringify(list)) {
     ctx.workspaceState.update(OPEN, { at: now, terminals: list });
@@ -570,18 +570,53 @@ function match(saved, free) {
   return tabs;
 }
 
-async function resume(id, cwd, tab) {
-  const cmd = `${claudeCommand()} --resume ${id}`;
+// A reopened tab keeps the environment from before the restart: VS Code marks it with ⚠, and Claude in it would talk to
+// VS Code on an old port. So the session gets a new tab in the reopened one's place (next to it in its group), and the
+// reopened one closes. (VS Code's Relaunch on a reopened tab mixes up tabs at the next Reload Window.)
+async function resume(e, tab, columns) {
+  let location;
   if (tab) {
-    // A reopened tab still shows its old output above; Claude shows the conversation again.
-    const unset = NESTED.some((k) => process.env[k]) ? `unset ${NESTED.join(' ')}; ` : '';
-    tab.t.sendText(`clear; ${unset}${cmd}`);
-    held.set(tab.pid, { id, gone: Date.now() + 20000 });
-    return;
+    // Make it the active tab of its group (the new tab opens next to it), once VS Code's tab events have settled.
+    let last = Date.now();
+    const subs = [vscode.window.tabGroups.onDidChangeTabs(() => { last = Date.now(); }),
+      vscode.window.tabGroups.onDidChangeTabGroups(() => { last = Date.now(); })];
+    tab.t.show(false);
+    for (let i = 0; i < 40 && (vscode.window.activeTerminal !== tab.t || Date.now() - last < 250); i++) await sleep(50);
+    subs.forEach((x) => x.dispose());
+    const column = columns.get(tab.t);
+    location = column ? { viewColumn: column, preserveFocus: true } : vscode.TerminalLocation.Panel;
   }
-  const t = claudeTerminal(cwd);
+  const t = claudeTerminal(e.cwd, location);
   t.show(true);
-  t.sendText(cmd);
+  if (tab) tab.t.dispose();
+  return t;
+}
+
+// The editor group of each reopened tab (none: it is in the panel). VS Code reopens the panel terminals first, then the
+// editor tabs group by group, so the last ones fill the groups in order.
+function editorColumns() {
+  const columns = new Map();
+  const groups = vscode.window.tabGroups.all;
+  const counts = groups.map((g) => g.tabs.filter((x) => x.input instanceof vscode.TabInputTerminal).length);
+  const all = vscode.window.terminals;
+  let i = all.length - counts.reduce((a, b) => a + b, 0);
+  if (i < 0) return columns;
+  groups.forEach((g, n) => { for (let k = 0; k < counts[n]; k++) columns.set(all[i++], g.viewColumn); });
+  return columns;
+}
+
+// Starts Claude in a new tab. A resumed Claude shows only its own title, and VS Code shows a Claude tab's title only
+// after it saw "Claude Code" in one; so that comes first, once the shell is up (VS Code naming the shell would undo it).
+async function startClaude(t, id) {
+  await new Promise((resolve) => {
+    const done = () => { sub.dispose(); clearTimeout(timer); resolve(); };
+    const sub = vscode.window.onDidChangeTerminalShellIntegration((e) => { if (e.terminal === t) done(); });
+    const timer = setTimeout(done, 5000);
+    if (t.shellIntegration) done();
+  });
+  await sleep(700);
+  t.sendText(`printf '\\033]0;Claude Code\\007'; clear`);
+  t.sendText(`${claudeCommand()} --resume ${id}`);
   const pid = await pidOf(t);
   if (pid) held.set(pid, { id, gone: Date.now() + 20000 });
 }
@@ -615,16 +650,25 @@ async function restore() {
     for (const x of free) x.cwd = dirs.get(x.pid);
     out.info(`restore: reopened idle tabs ${free.map((x) => `${x.pid} ${x.cwd}`).join(' | ')}`);
     const tabs = match(saved.terminals, free);
-    let count = 0;
+    const columns = editorColumns();
+    // Resuming brings each tab forward for a moment: afterwards, back to the tab you were in.
+    const group = vscode.window.tabGroups.activeTabGroup;
+    const wasTerminal = group && group.activeTab && group.activeTab.input instanceof vscode.TabInputTerminal;
+    const terminalBefore = vscode.window.activeTerminal;
+    const editorBefore = vscode.window.activeTextEditor;
+    const started = [];
     for (const [i, e] of saved.terminals.entries()) {
       if (!e.session || !todo.has(e.session)) continue;
       todo.delete(e.session);
       if (!claim(e.session)) continue;
       const tab = tabs.get(i);
       out.info(`restore: ${e.session} (${e.cwd}) in ${tab ? 'reopened tab ' + tab.pid : 'a new tab'}`);
-      await resume(e.session, e.cwd, tab);
-      count++;
+      started.push(startClaude(await resume(e, tab, columns), e.session));
     }
+    await Promise.all(started);
+    const count = started.length;
+    if (wasTerminal && terminalBefore && !terminalBefore.exitStatus) terminalBefore.show(false);
+    else if (editorBefore) vscode.window.showTextDocument(editorBefore.document, { viewColumn: editorBefore.viewColumn });
     if (count) vscode.window.setStatusBarMessage(`$(history) Resumed ${count} Claude session${count === 1 ? '' : 's'}`, 15000);
   } catch (e) {
     out.error('restore failed', e);

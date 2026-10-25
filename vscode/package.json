@@ -2,7 +2,7 @@
   "name": "claude-code-alerts",
   "displayName": "Claude Code Alerts: notifications for Claude Code terminals",
   "description": "Know which Claude Code session is done or needs you, and jump to the exact VS Code terminal tab. Companion of the Claude Code Alerts Mac app.",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "publisher": "lucal1fe",
   "license": "MIT",
   "icon": "media/icon.png",

@@ -101,6 +101,8 @@ public struct Msg: Codable {
     public var focused: Bool?
     public var flag: Bool?
     public var entrypoint: String?
+    /// How a session started (SessionStart hook): startup, resume, clear or compact.
+    public var source: String?
     /// Background work still running when a turn ended (Stop hook): count and a short description.
     public var pending: Int?
     public var ok: Bool?
