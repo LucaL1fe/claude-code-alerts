@@ -1,3 +1,4 @@
+import Shared
 import SwiftUI
 
 // MARK: - Small parts
@@ -254,10 +255,13 @@ struct AlertRow: View {
 
 struct SessionRow: View {
     let session: Session
+    var depth = 0
     @ObservedObject private var store = Store.shared
     @State private var hover = false
 
     var body: some View {
+        let id = session.id
+        let folder = store.shownFolder(of: id)
         HStack(spacing: 9) {
             StateDot(state: session.state)
             VStack(alignment: .leading, spacing: 1) {
@@ -274,11 +278,168 @@ struct SessionRow: View {
                 }
             }
         }
-        .padding(.horizontal, 10).padding(.vertical, 6)
+        .padding(.leading, 10 + CGFloat(depth) * 16).padding(.trailing, 10).padding(.vertical, 6)
         .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(hover ? 0.10 : 0.0)))
         .contentShape(Rectangle())
         .onHover { hover = $0 }
         .onTapGesture { if !session.isBackground { store.goTo(session.id) } }
+        // The same menu as in VS Code's Claude Sessions view.
+        .contextMenu {
+            Button("New Session") { store.newSession(in: folder) }
+            Button("New Folder…") { NewFolder.begin(in: folder) }
+            Divider()
+            if !session.isBackground { Button("Go to Session") { store.goTo(id) } }
+            Menu("Set State") {
+                Button("Needs You") { store.sessionsAction("state", ids: ["s:" + id], state: "input") }
+                Button("Plan Ready") { store.sessionsAction("state", ids: ["s:" + id], state: "review") }
+                Button("Done") { store.sessionsAction("state", ids: ["s:" + id], state: "done") }
+                Divider()
+                Button("Idle") { store.sessionsAction("state", ids: ["s:" + id], state: "idle") }
+            }
+            Divider()
+            MoveMenu(item: "s:" + id)
+            if folder != nil { Button("Move to Top Level") { store.sessionsAction("move", ids: ["s:" + id], folder: nil) } }
+            Divider()
+            Button("Rename…") { Rename.begin("session:\(id)") }
+            Button("Remove from List") { store.sessionsAction("hide", ids: ["s:" + id]) }
+        }
+    }
+}
+
+/// Move to Folder ▸: the top level and every folder (shown as its path), except where a folder can't go.
+struct MoveMenu: View {
+    let item: String
+    @ObservedObject private var store = Store.shared
+
+    var body: some View {
+        let moving = item.hasPrefix("f:") ? String(item.dropFirst(2)) : nil
+        let targets = store.visibleFolders
+            .filter { f in moving.map { !store.ancestors(f.id).contains($0) } ?? true }
+            .map { f in (id: f.id, path: store.ancestors(f.id).reversed().compactMap { store.folderName($0) }.joined(separator: " / ")) }
+            .sorted { $0.path.localizedStandardCompare($1.path) == .orderedAscending }
+        Menu("Move to Folder") {
+            Button("Top Level") { store.sessionsAction("move", ids: [item], folder: nil) }
+            if !targets.isEmpty { Divider() }
+            ForEach(targets, id: \.id) { t in Button(t.path) { store.sessionsAction("move", ids: [item], folder: t.id) } }
+        }
+    }
+}
+
+/// New Folder: makes "New Folder" and lets you name it right away.
+enum NewFolder {
+    static func begin(in parent: String?) {
+        let id = Store.shared.createFolder("New Folder", in: parent)
+        if let parent { Store.shared.collapsed.remove(parent) }
+        Rename.begin("folder:\(id)")
+    }
+}
+
+/// A folder's name, colored like in VS Code when something inside waits; rename in place.
+struct FolderNameField: View {
+    let folder: FolderInfo
+    var color: Color?
+    @ObservedObject private var store = Store.shared
+    @State private var draft = ""
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        if store.editingSessionId == "folder:\(folder.id)" {
+            HStack(spacing: 6) {
+                TextField("Folder name", text: $draft)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 12, weight: .semibold)).foregroundColor(.white)
+                    .padding(.horizontal, 6).padding(.vertical, 2)
+                    .background(RoundedRectangle(cornerRadius: 5).fill(Color.white.opacity(0.12)))
+                    .focused($focused)
+                    .background(MakeKeyWindow())
+                    .onSubmit {
+                        store.sessionsAction("rename", folder: folder.id, name: draft)
+                        Rename.end()
+                    }
+                    .onExitCommand { Rename.end() }
+                    .frame(minWidth: 120)
+                Text("Enter saves").font(.system(size: 9, weight: .semibold)).foregroundColor(.white.opacity(0.5))
+            }
+            .onAppear {
+                draft = folder.name
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { focused = true }
+            }
+        } else {
+            Text(folder.name)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(color ?? .white.opacity(0.85))
+                .lineLimit(1).truncationMode(.tail)
+        }
+    }
+}
+
+/// A folder like in the Explorer: click to open or close it; hover for Rename and Delete; right-click for the rest.
+struct FolderRow: View {
+    let folder: FolderInfo
+    var depth = 0
+    @ObservedObject private var store = Store.shared
+    @State private var hover = false
+
+    var body: some View {
+        let id = folder.id
+        let open = !store.collapsed.contains(id)
+        let signal = store.folderSignal(id)
+        let count = store.folderCount(id)
+        let siblings = store.listFolders(in: folder.parent)
+        HStack(spacing: 6) {
+            Image(systemName: "chevron.right")
+                .font(.system(size: 9, weight: .bold)).foregroundColor(.white.opacity(0.5))
+                .rotationEffect(.degrees(open ? 90 : 0)).frame(width: 10)
+            Image(systemName: open ? "folder" : "folder.fill")
+                .font(.system(size: 11)).foregroundColor(.white.opacity(0.55))
+            FolderNameField(folder: folder, color: signal?.color)
+            if count > 0 {
+                Text("\(count)").font(.system(size: 10.5, weight: .semibold)).foregroundColor(.white.opacity(0.45))
+            }
+            if let signal { Circle().fill(signal.color).frame(width: 6, height: 6) }
+            Spacer(minLength: 4)
+            if hover && store.editingSessionId != "folder:\(id)" {
+                IconButton(symbol: "pencil", help: "Rename", size: 20) { Rename.begin("folder:\(id)") }
+                IconButton(symbol: "trash", help: "Delete folder (what is inside moves up a level)", size: 20) {
+                    store.sessionsAction("delete", folder: id)
+                }
+            }
+        }
+        .frame(minHeight: 20)
+        .padding(.leading, 10 + CGFloat(depth) * 16).padding(.trailing, 10).padding(.vertical, 5)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(hover ? 0.10 : 0.0)))
+        .contentShape(Rectangle())
+        .onHover { hover = $0 }
+        .onTapGesture {
+            withAnimation(.easeOut(duration: 0.12)) { if open { store.collapsed.insert(id) } else { store.collapsed.remove(id) } }
+        }
+        .contextMenu {
+            Button("New Session") { store.newSession(in: id) }
+            Button("New Folder…") { NewFolder.begin(in: id) }
+            Divider()
+            MoveMenu(item: "f:" + id)
+            if folder.parent != nil { Button("Move to Top Level") { store.sessionsAction("move", ids: ["f:" + id], folder: nil) } }
+            if siblings.first?.id != id { Button("Move Up") { store.sessionsAction("shift", folder: id, text: "up") } }
+            if siblings.last?.id != id { Button("Move Down") { store.sessionsAction("shift", folder: id, text: "down") } }
+            Divider()
+            Button("Rename…") { Rename.begin("folder:\(id)") }
+            Button("Delete") { store.sessionsAction("delete", folder: id) }
+        }
+    }
+}
+
+/// The sessions and folders of one level, then each open folder's own level below it.
+struct SessionTree: View {
+    var parent: String? = nil
+    var depth = 0
+    @ObservedObject private var store = Store.shared
+
+    var body: some View {
+        ForEach(store.listSessions(in: parent)) { SessionRow(session: $0, depth: depth) }
+        ForEach(store.listFolders(in: parent), id: \.id) { f in
+            FolderRow(folder: f, depth: depth)
+            if !store.collapsed.contains(f.id) { AnyView(SessionTree(parent: f.id, depth: depth + 1)) }
+        }
     }
 }
 
@@ -321,10 +482,17 @@ struct AlertList: View {
                             .padding(.horizontal, 4).padding(.top, 4)
                         ForEach(muted) { AlertRow(alert: $0, expanded: expanded, dim: true) }
                     }
-                    if !store.sortedSessions.isEmpty {
-                        Text("Sessions · \(store.sortedSessions.count)").font(.system(size: 11, weight: .bold)).foregroundColor(.white.opacity(0.45))
-                            .padding(.horizontal, 4).padding(.top, 6)
-                        ForEach(store.sortedSessions) { SessionRow(session: $0) }
+                    if !store.sortedSessions.isEmpty || !store.visibleFolders.isEmpty {
+                        HStack(spacing: 6) {
+                            Text("Sessions · \(store.sortedSessions.count)").font(.system(size: 11, weight: .bold)).foregroundColor(.white.opacity(0.45))
+                            Spacer()
+                            IconButton(symbol: "plus", help: "New Session (a terminal tab in VS Code that runs claude)", size: 20) {
+                                onClose(); store.newSession(in: nil)
+                            }
+                            IconButton(symbol: "folder.badge.plus", help: "New Folder", size: 20) { NewFolder.begin(in: nil) }
+                        }
+                        .padding(.horizontal, 4).padding(.top, 6)
+                        SessionTree()
                     }
                 }
                 .background(GeometryReader { g in Color.clear.preference(key: HeightKey.self, value: g.size.height) })

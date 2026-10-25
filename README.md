@@ -36,7 +36,10 @@ Claude Code Alerts fixes exactly that:
 
 Click the menu bar icon: every alert, most urgent first (orange needs you, purple plan ready, green done). The icon
 takes the color of the most urgent item and shows how many are waiting. Open a row to see more, act on it, or go
-straight to its terminal tab.
+straight to its terminal tab. Below the alerts, every session sits in the same folders as in VS Code's Claude Sessions
+view (click a folder to open or close it; it is colored when something inside waits), with the same right-click menu:
+New Session, New Folder, Go to Session, Set State, Move to Folder, Rename, Remove from List; folders also have Move
+Up / Move Down and Delete.
 
 <p align="center"><img src="docs/media/menubar.webp" alt="The menu bar list opens, a row expands, and go to opens its VS Code terminal tab" width="900"></p>
 

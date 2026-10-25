@@ -39,6 +39,10 @@ final class Store: ObservableObject {
     @Published var macSessionId: String?
     @Published var editingSessionId: String?
     @Published var expandedAlertId: UUID?
+    /// Folders you closed in the menu bar list (VS Code keeps its own).
+    @Published var collapsed = Set(UserDefaults.standard.stringArray(forKey: "collapsedFolders") ?? []) {
+        didSet { UserDefaults.standard.set(Array(collapsed), forKey: "collapsedFolders") }
+    }
     /// Debug UI steps for scripted demo recordings ("list", "close").
     var onDebugUI: ((String) -> Void)?
     /// Demo mode (for recordings) survives restarts until switched off.
@@ -764,7 +768,7 @@ final class Store: ObservableObject {
     var visibleFolders: [FolderInfo] { folders.values.filter { ($0.demo ?? false) == demoMode } }
 
     /// The folder a session is in, if that folder still exists (nil = top level).
-    private func folderOf(_ sessionId: String) -> String? {
+    func folderOf(_ sessionId: String) -> String? {
         places[sessionId]?.folder.flatMap { folders[$0] != nil ? $0 : nil }
     }
 
@@ -805,14 +809,68 @@ final class Store: ObservableObject {
         return true
     }
 
+    // MARK: - The Sessions list (VS Code view and menu bar list)
+
+    /// The same actions as the VS Code view sends, from our own list ("s:<id>" / "f:<id>" items).
+    func sessionsAction(_ event: String, ids: [String] = [], folder: String? = nil, name: String? = nil,
+                        state: String? = nil, text: String? = nil) {
+        var m = Msg(kind: "folder")
+        m.event = event; m.ids = ids; m.folder = folder; m.name = name; m.state = state; m.text = text
+        handleFolder(m)
+    }
+
+    /// A new folder (in `parent`, nil = top level); returns its id.
+    @discardableResult
+    func createFolder(_ name: String, in parent: String?) -> String {
+        let parent = parent.flatMap { folders[$0] != nil ? $0 : nil }
+        let id = UUID().uuidString.lowercased()
+        folders[id] = FolderInfo(id: id, name: name, parent: parent, order: nextOrder(parent), demo: demoMode ? true : nil)
+        changed()
+        return id
+    }
+
+    /// A session's folder in the lists (one that is not shown counts as the top level).
+    func shownFolder(of sessionId: String) -> String? {
+        folderOf(sessionId).flatMap { f in folders[f].map { ($0.demo ?? false) == demoMode } == true ? f : nil }
+    }
+
+    /// On each level, like the VS Code view: the sessions (most urgent, then the one you wrote to last), then the folders.
+    func listSessions(in folder: String?) -> [Session] { sortedSessions.filter { shownFolder(of: $0.id) == folder } }
+    func listFolders(in parent: String?) -> [FolderInfo] {
+        siblings(parent).compactMap { folders[$0] }.filter { ($0.demo ?? false) == demoMode }
+    }
+
+    func folderName(_ id: String) -> String? { folders[id]?.name }
+
+    /// A folder and every folder above it.
+    func ancestors(_ folder: String?) -> [String] {
+        var out: [String] = []
+        var f = folder
+        while let id = f, folders[id] != nil, out.count < 64 { out.append(id); f = folders[id]?.parent }
+        return out
+    }
+
+    /// How many sessions a folder holds (with its subfolders), and the most urgent thing waiting inside.
+    func folderCount(_ id: String) -> Int { sortedSessions.filter { ancestors(shownFolder(of: $0.id)).contains(id) }.count }
+    func folderSignal(_ id: String) -> AState? {
+        sortedSessions.filter { [.input, .review, .error, .done, .mac].contains($0.state) && ancestors(shownFolder(of: $0.id)).contains(id) }
+            .map(\.state).min { $0.urgency < $1.urgency }
+    }
+
+    /// Opens a terminal tab running claude in VS Code (the extension does it), landing in `folder`.
+    func newSession(in folder: String?) {
+        var c = URLComponents(string: "vscode://lucal1fe.claude-code-alerts/new-session")!
+        if let folder { c.queryItems = [URLQueryItem(name: "folder", value: folder)] }
+        if let url = c.url { NSWorkspace.shared.open(url) }
+    }
+
     private func handleFolder(_ msg: Msg) {
         switch msg.event {
         case "create":
             let name = (msg.name ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             guard !name.isEmpty else { return }
-            let parent = msg.folder.flatMap { folders[$0] != nil ? $0 : nil }
-            let id = UUID().uuidString.lowercased()
-            folders[id] = FolderInfo(id: id, name: name, parent: parent, order: nextOrder(parent), demo: demoMode ? true : nil)
+            createFolder(name, in: msg.folder)
+            return
         case "rename":
             let name = (msg.name ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             guard let id = msg.folder, folders[id] != nil, !name.isEmpty else { return }

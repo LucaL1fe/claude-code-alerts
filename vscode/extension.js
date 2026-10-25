@@ -736,6 +736,8 @@ function activate(context) {
         const q = new URLSearchParams(uri.query);
         const pid = Number(q.get('pid'));
         if (uri.path === '/focus' && pid) onMessage({ kind: 'focusTerminal', shellPid: pid });
+        // New Session from the menu bar list (Claude Code Alerts app), in a folder or at the top level.
+        if (uri.path === '/new-session') newSession(q.get('folder') ? 'f:' + q.get('folder') : null);
         if (uri.path === '/dev-terminal') devTerminal(q);
         if (uri.path === '/dev-close') devClose();
       }
