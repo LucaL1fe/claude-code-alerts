@@ -3,6 +3,7 @@
 // and shows every Claude session in a "Claude Sessions" view (with your own folders, like the Explorer) and the status bar.
 const vscode = require('vscode');
 const net = require('net');
+const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
@@ -26,6 +27,8 @@ const URGENCY = { input: 0, review: 1, error: 2, done: 3, mac: 4, free: 5, worki
 // States that color a session's name and every folder above it, like changed files in the Explorer.
 const SIGNAL = ['input', 'review', 'error', 'done', 'mac'];
 const MIME = 'application/vnd.claude-code-alerts.items';
+// Set inside a Claude session; a claude started with them thinks it is nested.
+const NESTED = ['CLAUDECODE', 'CLAUDE_CODE_CHILD_SESSION', 'CLAUDE_CODE_ENTRYPOINT'];
 
 let sock = null;
 let extUri = null;
@@ -122,6 +125,9 @@ async function onMessage(m) {
     tree.refresh();
     decorations.refresh();
     updateStatus();
+    // A session started or ended somewhere: maybe in one of our tabs.
+    const key = sessions.map((s) => s.id + ':' + s.shellPid).sort().join(',');
+    if (key !== sessionsKey) { sessionsKey = key; saveSoon(); }
   }
 }
 
@@ -260,18 +266,25 @@ async function newFolder(key) {
   if (name && name.trim()) send({ kind: 'folder', event: 'create', name: name.trim(), folder: parent });
 }
 
+// A terminal tab for a Claude session.
+function claudeTerminal(cwd) {
+  const cfg = vscode.workspace.getConfiguration('claudeCodeAlerts');
+  return vscode.window.createTerminal({
+    cwd,
+    location: cfg.get('newSessionLocation') === 'panel' ? vscode.TerminalLocation.Panel : vscode.TerminalLocation.Editor,
+    // VS Code may have been opened from inside a Claude session: without this, claude would think it is nested.
+    env: Object.fromEntries(NESTED.map((k) => [k, null]))
+  });
+}
+
+const claudeCommand = () => vscode.workspace.getConfiguration('claudeCodeAlerts').get('newSessionCommand') || 'claude';
+
 // Opens a terminal tab that starts Claude; started from a folder, the session lands in that folder.
 async function newSession(key) {
   const folder = targetFolder(key);
-  const cfg = vscode.workspace.getConfiguration('claudeCodeAlerts');
-  const t = vscode.window.createTerminal({
-    cwd: workspacePath(),
-    location: cfg.get('newSessionLocation') === 'panel' ? vscode.TerminalLocation.Panel : vscode.TerminalLocation.Editor,
-    // VS Code may have been opened from inside a Claude session: without this, claude would think it is nested.
-    env: { CLAUDECODE: null, CLAUDE_CODE_CHILD_SESSION: null, CLAUDE_CODE_ENTRYPOINT: null }
-  });
+  const t = claudeTerminal(workspacePath());
   t.show(false);
-  t.sendText(cfg.get('newSessionCommand') || 'claude');
+  t.sendText(claudeCommand());
   const shellPid = await t.processId;
   if (folder && shellPid) send({ kind: 'folder', event: 'expect', folder, shellPid });
   reportSoon();
@@ -385,7 +398,245 @@ function devClose() {
   reportSoon();
 }
 
+// Sessions come back after VS Code or the Mac restarts. VS Code reopens the terminal tabs, but as empty shells in the
+// folder they were in (panel terminals first, then the editor tabs group by group). So we keep that list with the
+// Claude session each tab ran, and after a restart resume each one in its old tab: `claude --resume <id>`.
+const CLAUDE_DIR = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
+const OPEN = 'openSessions';
+// When VS Code quits, Claude ends before the tabs close: a session that left its tab still counts this long.
+const GRACE = 10000;
+const MAX_AGE = 14 * 86400000;
+let ctx = null;
+let out = null;
+let restoring = true;
+let closing = false;
+let saveTimer = null;
+let sessionsKey = '';
+// Shell PID → the session that ran in it ({ id, gone: when it stopped running }).
+const held = new Map();
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const pidOf = (t) => Promise.race([t.processId, sleep(2000)]);
+
+function run(cmd, args) {
+  return new Promise((resolve) => execFile(cmd, args, { timeout: 5000 }, (e, out) => resolve(out || '')));
+}
+
+// Every process: pid → { parent, start }.
+async function processes() {
+  const map = new Map();
+  for (const line of (await run('/bin/ps', ['-axo', 'pid=,ppid=,lstart='])).split('\n')) {
+    const m = line.trim().match(/^(\d+)\s+(\d+)\s+(.+)$/);
+    if (m) map.set(Number(m[1]), { parent: Number(m[2]), start: Date.parse(m[3]) });
+  }
+  return map;
+}
+
+// Claude sessions running now, from Claude Code's own list (~/.claude/sessions/<pid>.json). A file left behind by a
+// crash can name a PID another process has taken since: the start time (procStart, in UTC) tells them apart.
+function claudeSessions(procs) {
+  const dir = path.join(CLAUDE_DIR, 'sessions');
+  let files = [];
+  try { files = fs.readdirSync(dir).filter((f) => f.endsWith('.json')); } catch { return []; }
+  const out = [];
+  for (const f of files) {
+    try {
+      const r = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
+      const p = procs.get(r.pid);
+      const started = r.procStart ? Date.parse(r.procStart + ' UTC') : NaN;
+      if (r.sessionId && p && !(Math.abs(started - p.start) > 3000)) out.push({ pid: r.pid, id: r.sessionId });
+    } catch { /* being written */ }
+  }
+  return out;
+}
+
+// The folder each shell is in (VS Code reopens its tab there).
+async function cwds(pids) {
+  const map = new Map();
+  if (!pids.length) return map;
+  let pid = 0;
+  for (const line of (await run('/usr/sbin/lsof', ['-a', '-d', 'cwd', '-Fn', '-p', pids.join(',')])).split('\n')) {
+    if (line[0] === 'p') pid = Number(line.slice(1));
+    else if (line[0] === 'n' && pid) map.set(pid, line.slice(1));
+  }
+  return map;
+}
+
+// This window's terminals in the order VS Code reopens them, each with its folder and Claude session.
+async function openTerminals() {
+  const list = [];
+  for (const t of vscode.window.terminals) {
+    const pid = await pidOf(t);
+    if (pid) list.push({ t, pid });
+  }
+  // An editor tab is labeled with its terminal's name: that gives the tab order.
+  const editor = [];
+  for (const g of vscode.window.tabGroups.all) {
+    for (const tab of g.tabs) {
+      const x = tab.input instanceof vscode.TabInputTerminal && list.find((y) => !editor.includes(y) && y.t.name === tab.label);
+      if (x) editor.push(x);
+    }
+  }
+  const procs = await processes();
+  const shells = new Set(list.map((x) => x.pid));
+  const inShell = new Map();
+  for (const s of claudeSessions(procs)) {
+    // Claude's parent is the shell (or a wrapper the shell started).
+    for (let p = procs.get(s.pid), n = 0; p && n < 4; p = procs.get(p.parent), n++) {
+      if (shells.has(p.parent)) { inShell.set(p.parent, s.id); break; }
+    }
+  }
+  const dirs = await cwds(list.map((x) => x.pid));
+  // VS Code can show one shell twice (in the panel and in an editor tab): it counts once, as the tab.
+  const panel = list.filter((x) => !editor.includes(x) && !editor.some((y) => y.pid === x.pid))
+    .filter((x, i, all) => all.findIndex((y) => y.pid === x.pid) === i);
+  return [...panel, ...editor]
+    .map((x) => ({ ...x, cwd: dirs.get(x.pid) || null, session: inShell.get(x.pid) || null }));
+}
+
+function saveSoon() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(save, 1000);
+}
+
+async function save() {
+  if (restoring || closing || !ctx) return;
+  const terminals = await openTerminals();
+  if (closing) return;
+  const now = Date.now();
+  let waiting = false;
+  for (const x of terminals) {
+    if (x.session) { held.set(x.pid, { id: x.session, gone: 0 }); continue; }
+    const h = held.get(x.pid);
+    if (!h) continue;
+    if (!h.gone) h.gone = now;
+    if (now - h.gone < GRACE) { x.session = h.id; waiting = true; } else held.delete(x.pid);
+  }
+  for (const pid of held.keys()) if (!terminals.some((x) => x.pid === pid)) held.delete(pid);
+  if (waiting) setTimeout(saveSoon, GRACE);
+  const list = terminals.map((x) => ({ cwd: x.cwd, session: x.session }));
+  const cur = ctx.workspaceState.get(OPEN);
+  if (!cur || now - cur.at > 3600000 || JSON.stringify(cur.terminals) !== JSON.stringify(list)) {
+    ctx.workspaceState.update(OPEN, { at: now, terminals: list });
+  }
+}
+
+// Waits until VS Code has reopened its terminal tabs (their number stops changing).
+async function settle() {
+  let n = -1;
+  let same = 0;
+  for (let i = 0; i < 20 && same < 3; i++) {
+    await sleep(500);
+    same = vscode.window.terminals.length === n ? same + 1 : 0;
+    n = vscode.window.terminals.length;
+  }
+}
+
+// Two windows of the same folder share what was saved: only one of them resumes a session.
+function claim(id) {
+  const dir = path.join(os.tmpdir(), 'claude-code-alerts-resume');
+  const file = path.join(dir, id);
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    try { if (Date.now() - fs.statSync(file).mtimeMs < 120000) return false; } catch { /* not claimed yet */ }
+    fs.writeFileSync(file, String(process.pid));
+    return true;
+  } catch { return false; }
+}
+
+// Which reopened tab belongs to which saved one (saved index → tab): the longest run of tabs in the same folders, in
+// the same order. Usually all of them; when VS Code's list differs from ours (a tab missing, the panel late), matching
+// from the end keeps the editor tabs, where sessions live, in place. A session left over takes any tab in its folder.
+function match(saved, free) {
+  const n = saved.length;
+  const m = free.length;
+  const same = (i, k) => saved[i].cwd === free[k].cwd;
+  const len = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
+  for (let i = 1; i <= n; i++) {
+    for (let k = 1; k <= m; k++) len[i][k] = same(i - 1, k - 1) ? len[i - 1][k - 1] + 1 : Math.max(len[i - 1][k], len[i][k - 1]);
+  }
+  const tabs = new Map();
+  const used = new Set();
+  for (let i = n, k = m; i > 0 && k > 0;) {
+    if (same(i - 1, k - 1)) { tabs.set(i - 1, free[k - 1]); used.add(k - 1); i--; k--; }
+    else if (len[i - 1][k] >= len[i][k - 1]) i--;
+    else k--;
+  }
+  saved.forEach((e, i) => {
+    if (!e.session || tabs.has(i)) return;
+    const k = free.findIndex((x, j) => !used.has(j) && x.cwd === e.cwd);
+    if (k >= 0) { tabs.set(i, free[k]); used.add(k); }
+  });
+  return tabs;
+}
+
+async function resume(id, cwd, tab) {
+  const cmd = `${claudeCommand()} --resume ${id}`;
+  if (tab) {
+    // A reopened tab still shows its old output above; Claude shows the conversation again.
+    const unset = NESTED.some((k) => process.env[k]) ? `unset ${NESTED.join(' ')}; ` : '';
+    tab.t.sendText(`clear; ${unset}${cmd}`);
+    held.set(tab.pid, { id, gone: Date.now() + 20000 });
+    return;
+  }
+  const t = claudeTerminal(cwd);
+  t.show(true);
+  t.sendText(cmd);
+  const pid = await pidOf(t);
+  if (pid) held.set(pid, { id, gone: Date.now() + 20000 });
+}
+
+// After a restart: the sessions this window had that run nowhere now, each in the tab VS Code reopened for it (same
+// folder, same order), else in a new tab.
+async function restore() {
+  try {
+    const saved = ctx.workspaceState.get(OPEN);
+    if (!vscode.workspace.getConfiguration('claudeCodeAlerts').get('restoreSessions')) return;
+    if (!saved || !(Date.now() - saved.at < MAX_AGE) || !saved.terminals.some((e) => e.session)) return;
+    await settle();
+    const running = new Set(claudeSessions(await processes()).map((s) => s.id));
+    const todo = new Set(saved.terminals
+      .filter((e) => e.session && /^[\w-]+$/.test(e.session) && !running.has(e.session) && e.cwd && fs.existsSync(e.cwd))
+      .map((e) => e.session));
+    out.info(`restore: ${saved.terminals.length} saved tabs, ${todo.size} sessions to resume, ${running.size} running`);
+    if (!todo.size) return;
+    // The reopened tabs: shells with nothing running in them (asked twice: a starting shell runs short helpers).
+    const busy = new Set();
+    for (let i = 0; i < 2; i++) {
+      if (i) await sleep(800);
+      for (const p of (await processes()).values()) busy.add(p.parent);
+    }
+    const free = [];
+    for (const t of vscode.window.terminals) {
+      const pid = await pidOf(t);
+      if (pid && !busy.has(pid) && !free.some((x) => x.pid === pid)) free.push({ t, pid });
+    }
+    const dirs = await cwds(free.map((x) => x.pid));
+    for (const x of free) x.cwd = dirs.get(x.pid);
+    out.info(`restore: reopened idle tabs ${free.map((x) => `${x.pid} ${x.cwd}`).join(' | ')}`);
+    const tabs = match(saved.terminals, free);
+    let count = 0;
+    for (const [i, e] of saved.terminals.entries()) {
+      if (!e.session || !todo.has(e.session)) continue;
+      todo.delete(e.session);
+      if (!claim(e.session)) continue;
+      const tab = tabs.get(i);
+      out.info(`restore: ${e.session} (${e.cwd}) in ${tab ? 'reopened tab ' + tab.pid : 'a new tab'}`);
+      await resume(e.session, e.cwd, tab);
+      count++;
+    }
+    if (count) vscode.window.setStatusBarMessage(`$(history) Resumed ${count} Claude session${count === 1 ? '' : 's'}`, 15000);
+  } catch (e) {
+    out.error('restore failed', e);
+  } finally {
+    restoring = false;
+    saveSoon();
+  }
+}
+
 function activate(context) {
+  ctx = context;
+  out = vscode.window.createOutputChannel('Claude Code Alerts', { log: true });
   extUri = context.extensionUri;
   status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 50);
   status.command = 'claudeCodeAlerts.sessions.focus';
@@ -393,6 +644,7 @@ function activate(context) {
     treeDataProvider: tree, dragAndDropController: dragAndDrop, canSelectMany: true, showCollapseAll: true
   });
   context.subscriptions.push(
+    out,
     status,
     treeView,
     vscode.window.registerFileDecorationProvider(decorations),
@@ -411,8 +663,14 @@ function activate(context) {
     vscode.commands.registerCommand('claudeCodeAlerts.moveDown', (key) => shiftFolder(key, 'down')),
     vscode.workspace.onDidChangeConfiguration((e) => { if (e.affectsConfiguration('claudeCodeAlerts.foldersPosition')) tree.refresh(); }),
     vscode.commands.registerCommand('claudeCodeAlerts.settings', () => execFile(CCA, ['settings'], () => {})),
-    vscode.window.onDidOpenTerminal(reportSoon),
-    vscode.window.onDidCloseTerminal(reportSoon),
+    vscode.window.onDidOpenTerminal(() => { reportSoon(); saveSoon(); }),
+    vscode.window.onDidCloseTerminal(async (t) => {
+      reportSoon();
+      // Closed by VS Code quitting or reloading: what was open stays saved for next time.
+      if (t.exitStatus && t.exitStatus.reason === vscode.TerminalExitReason.Shutdown) { closing = true; return; }
+      held.delete(await pidOf(t));
+      saveSoon();
+    }),
     vscode.window.onDidChangeActiveTerminal(reportSoon),
     vscode.window.onDidChangeWindowState(reportSoon),
     vscode.workspace.onDidChangeWorkspaceFolders(reportSoon),
@@ -429,10 +687,11 @@ function activate(context) {
   );
   connect();
   // Ages in the view ("3 min") stay fresh; tab titles change without an event, so report them now and then.
-  const timer = setInterval(() => { tree.refresh(); report(); }, 30000);
+  const timer = setInterval(() => { tree.refresh(); report(); saveSoon(); }, 30000);
   context.subscriptions.push({ dispose: () => clearInterval(timer) });
+  restore();
 }
 
-function deactivate() {}
+function deactivate() { closing = true; }
 
 module.exports = { activate, deactivate };

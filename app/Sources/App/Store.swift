@@ -127,9 +127,10 @@ final class Store: ObservableObject {
         hidden = Set((saved.hidden ?? []).filter { sessions[$0] != nil })
         folders = Dictionary((saved.folders ?? []).map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         // Places of running sessions, and of the 300 sessions used last (for resuming them).
-        let kept = (saved.places ?? [:]).filter { sessions[$0.key] == nil }.sorted { $0.value.used > $1.value.used }.prefix(300)
+        let last = { (p: Place) in max(p.used, p.touched ?? p.used) }
+        let kept = (saved.places ?? [:]).filter { sessions[$0.key] == nil }.sorted { last($0.value) > last($1.value) }.prefix(300)
         places = Dictionary(uniqueKeysWithValues: Array(kept))
-        for (id, p) in saved.places ?? [:] where sessions[id] != nil { places[id] = Place(folder: p.folder, used: Date()) }
+        for (id, p) in saved.places ?? [:] where sessions[id] != nil { var q = p; q.used = Date(); places[id] = q }
         for id in sessions.keys where places[id] == nil { place(id) }
     }
 
@@ -213,7 +214,11 @@ final class Store: ObservableObject {
         var s = sessions[id] ?? Session(id: id, autoName: "", customName: nil, claudePid: msg.claudePid ?? 0,
                                         shellPid: msg.shellPid ?? 0, tty: msg.tty, cwd: msg.cwd ?? "",
                                         transcript: msg.transcript, state: .idle, detail: "", updated: Date())
-        if s.started == nil { s.started = Date() }
+        if s.started == nil {
+            // Resumed (claude --resume keeps the id): the name you gave it and its spot in the list come back.
+            s.started = places[id]?.touched ?? Date()
+            if s.customName == nil { s.customName = places[id]?.name }
+        }
         if let n = msg.name, !n.isEmpty {
             s.autoName = Self.cleanName(n)
         } else if let tn = terminalName(for: msg.shellPid ?? s.shellPid) {
@@ -307,6 +312,7 @@ final class Store: ObservableObject {
                 }
                 s.unattended = s.scheduledTask != nil && s.lastPrompt == nil
                 s.notifyPending = false; s.lastPrompt = Date(); sessions[id] = s
+                places[id]?.touched = s.lastPrompt
             }
             setState(id, .working, "Working")
         case "PostToolUse":
@@ -498,6 +504,7 @@ final class Store: ObservableObject {
         guard var s = sessions[sessionId], !clean.isEmpty else { return }
         s.customName = clean
         sessions[sessionId] = s
+        places[sessionId]?.name = clean
         // The tab follows through its title (see TabTitles), so the colored dots keep working.
         tabTitles.forget(sessionId)
         changed()
@@ -762,9 +769,9 @@ final class Store: ObservableObject {
         let prior = !inTerminal ? nil : sessions.values.first { $0.id != id && $0.shellPid == s.shellPid }?.id
             ?? lastInShell[s.shellPid].flatMap { Date().timeIntervalSince($0.at) < 300 ? $0.id : nil }
         if s.shellPid > 0, let e = expected.removeValue(forKey: s.shellPid), Date().timeIntervalSince(e.at) < 600 {
-            places[id] = Place(folder: e.folder, used: Date())
+            places[id] = Place(folder: e.folder, used: Date(), touched: s.touched)
         } else {
-            places[id] = Place(folder: prior.flatMap { places[$0]?.folder }, used: Date())
+            places[id] = Place(folder: prior.flatMap { places[$0]?.folder }, used: Date(), touched: s.touched)
         }
     }
 
@@ -847,7 +854,12 @@ final class Store: ObservableObject {
                 folders[id]?.order = nextOrder(parent)
                 folders[id]?.parent = parent
             }
-            if item.hasPrefix("s:"), sessions[id] != nil { places[id] = Place(folder: parent, used: Date()) }
+            if item.hasPrefix("s:"), sessions[id] != nil {
+                var p = places[id] ?? Place(folder: nil, used: Date(), touched: sessions[id]?.touched)
+                p.folder = parent
+                p.used = Date()
+                places[id] = p
+            }
         }
     }
 

@@ -62,6 +62,12 @@ your order: right-click → Move Up / Move Down, or Alt+↑ / Alt+↓. Each fold
 above it, so a collapsed folder still shows that something inside waits. A resumed session (or one started again after
 `/clear` in the same tab) comes back to its folder.
 
+**Restart without losing your sessions.** When VS Code updates or your Mac restarts, VS Code reopens your terminal tabs
+but Claude is no longer running in them. The extension remembers which tab ran which session and resumes each one in its
+old tab (`claude --resume <id>`, in the same folder), with its name and its folder in the view. Sessions you ended
+yourself stay ended. Turn it off with `claudeCodeAlerts.restoreSessions`; what it did is in the Output panel under
+"Claude Code Alerts".
+
 <p align="center"><img src="docs/media/sessions.webp" alt="The Claude Sessions view in VS Code updates live; a click opens the session that needs permission" width="900"></p>
 
 ### Not now? Snooze it. Away? Nothing gets lost

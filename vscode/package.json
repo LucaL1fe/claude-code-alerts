@@ -2,7 +2,7 @@
   "name": "claude-code-alerts",
   "displayName": "Claude Code Alerts: notifications for Claude Code terminals",
   "description": "Know which Claude Code session is done or needs you, and jump to the exact VS Code terminal tab. Companion of the Claude Code Alerts Mac app.",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "publisher": "lucal1fe",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -363,6 +363,11 @@
             "A terminal in the panel."
           ],
           "description": "Where New Session opens its terminal."
+        },
+        "claudeCodeAlerts.restoreSessions": {
+          "type": "boolean",
+          "default": true,
+          "description": "After VS Code or your Mac restarts, resume the Claude sessions that were open in this window, each in its old terminal tab (claude --resume)."
         },
         "claudeCodeAlerts.foldersPosition": {
           "type": "string",

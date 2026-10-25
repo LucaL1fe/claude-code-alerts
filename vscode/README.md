@@ -9,6 +9,8 @@ Companion extension of the [Claude Code Alerts](https://github.com/LucaL1fe/clau
   Move to Folder… / Move to Top Level. Hover a folder for New Session, Rename (F2) and Delete. Move Up / Move Down
   (Alt+↑ / Alt+↓) orders folders; sessions sort themselves (most urgent, then the one you wrote to last).
 - A folder takes the color of the most urgent session inside, also when collapsed, and shows how many sessions it holds.
+- **Sessions come back after a restart** (VS Code update, Mac restart): each one resumes in its old terminal tab
+  (`claude --resume <id>`) with its name and folder. Setting `claudeCodeAlerts.restoreSessions`.
 - Status bar item with the number of sessions waiting for you.
 - Renames the terminal tab when you rename a session in the app or ask Claude to.
 

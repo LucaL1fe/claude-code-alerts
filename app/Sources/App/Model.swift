@@ -128,10 +128,13 @@ struct Session: Codable, Identifiable, Equatable {
     }
 }
 
-/// Where a session sits in the Sessions view. Kept after the session ends, so a resumed session finds its folder again.
+/// Where a session sits in the Sessions view. Kept after the session ends, so a resumed session finds its folder, the
+/// name you gave it and its spot in the list again.
 struct Place: Codable, Equatable {
     var folder: String?
     var used: Date
+    var name: String? = nil
+    var touched: Date? = nil
 }
 
 enum AlertStatus: String, Codable {
