@@ -91,6 +91,8 @@ struct Session: Codable, Identifiable, Equatable {
     var isActive: Bool { state != .idle }
 
     var isBackground: Bool { origin == "background" }
+    /// It runs in a VS Code terminal tab, so Close Session can close it.
+    var closable: Bool { (origin ?? "vscode-terminal") == "vscode-terminal" && shellPid > 0 }
 
     var name: String { customName ?? autoName }
 

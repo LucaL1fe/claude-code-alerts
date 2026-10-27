@@ -13,6 +13,8 @@ Companion extension of the [Claude Code Alerts](https://github.com/LucaL1fe/clau
   Idle to clear it.
 - **Sessions come back after a restart** (VS Code update, Mac restart): each one resumes in its old terminal tab
   (`claude --resume <id>`) with its name and folder. Setting `claudeCodeAlerts.restoreSessions`.
+- **Close Session** (the trash on a session row, or right-click): closes its terminal tab, which ends Claude. While
+  Claude is still working it asks first.
 - Status bar item with the number of sessions waiting for you.
 - Renames the terminal tab when you rename a session in the app or ask Claude to.
 

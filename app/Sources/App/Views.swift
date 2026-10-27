@@ -301,7 +301,11 @@ struct SessionRow: View {
             if folder != nil { Button("Move to Top Level") { store.sessionsAction("move", ids: ["s:" + id], folder: nil) } }
             Divider()
             Button("Rename…") { Rename.begin("session:\(id)") }
-            Button("Remove from List") { store.sessionsAction("hide", ids: ["s:" + id]) }
+            if session.closable {
+                Button("Close Session") { CloseSession.begin(session) }
+            } else {
+                Button("Remove from List") { store.sessionsAction("hide", ids: ["s:" + id]) }
+            }
         }
     }
 }
@@ -326,6 +330,29 @@ struct MoveMenu: View {
 }
 
 /// New Folder: makes "New Folder" and lets you name it right away.
+/// Close Session: its VS Code tab closes, which ends Claude (`claude --resume` continues it later). Asks first while
+/// Claude is still working.
+enum CloseSession {
+    static func begin(_ session: Session) {
+        DispatchQueue.main.async {
+            let s = Store.shared.sessions[session.id] ?? session
+            if s.state == .working || s.state == .background {
+                let previous = NSWorkspace.shared.frontmostApplication
+                let alert = NSAlert()
+                alert.messageText = "Claude is still working in “\(s.name)”."
+                alert.informativeText = "Closing the session stops it in the middle of its work."
+                alert.addButton(withTitle: "Close Session")
+                alert.addButton(withTitle: "Cancel")
+                NSApp.activate()
+                let ok = alert.runModal() == .alertFirstButtonReturn
+                previous?.activate()
+                guard ok else { return }
+            }
+            Store.shared.sessionsAction("close", ids: ["s:" + s.id])
+        }
+    }
+}
+
 enum NewFolder {
     static func begin(in parent: String?) {
         let id = Store.shared.createFolder("New Folder", in: parent)

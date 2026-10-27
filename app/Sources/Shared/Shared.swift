@@ -41,9 +41,11 @@ public struct SessionInfo: Codable, Equatable {
     public var folder: String?
     /// When you last wrote to it (or it started): the list order.
     public var touched: Double
+    /// Where it runs: vscode-terminal, vscode-panel, terminal[:bundle id], desktop, background (nil = vscode-terminal).
+    public var origin: String?
 
     public init(id: String, name: String, state: String, detail: String, shellPid: Int32, updated: Double,
-                folder: String? = nil, touched: Double = 0) {
+                folder: String? = nil, touched: Double = 0, origin: String? = nil) {
         self.id = id
         self.name = name
         self.state = state
@@ -52,6 +54,7 @@ public struct SessionInfo: Codable, Equatable {
         self.updated = updated
         self.folder = folder
         self.touched = touched
+        self.origin = origin
     }
 }
 

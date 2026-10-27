@@ -107,6 +107,10 @@ async function onMessage(m) {
   if (m.kind === 'focusTerminal') {
     const t = await findTerminal(m.shellPid);
     if (t) t.show(false);
+  } else if (m.kind === 'closeTerminal') {
+    // Close Session: closing the tab ends Claude.
+    const t = await findTerminal(m.shellPid);
+    if (t) t.dispose();
   } else if (m.kind === 'sessions') {
     // The app sends them in order: most urgent first, newest session first within the same urgency.
     sessions = (m.sessions || []).slice();
@@ -196,7 +200,8 @@ class SessionTree {
     if (!s) return new vscode.TreeItem('');
     const item = new vscode.TreeItem(s.name);
     item.id = key;
-    item.contextValue = folderOf(s) ? 'session nested' : 'session';
+    // Words the menus test: tab (runs in a VS Code terminal tab, so Close Session can close it), nested.
+    item.contextValue = ['session', closable(s) && 'tab', folderOf(s) && 'nested'].filter(Boolean).join(' ');
     item.resourceUri = keyUri(key);
     item.description = `${LABEL[s.state] || s.state} · ${ago(s.updated)}${s.detail ? ' · ' + s.detail : ''}`;
     // Colored dots are files, so a selected row keeps its state color (VS Code paints selected theme icons white).
@@ -330,14 +335,26 @@ function moveToTop(key, keys) {
   send({ kind: 'folder', event: 'move', ids: picked(key, keys), folder: null });
 }
 
-// Trash: a folder goes, and what was in it moves up one level. A session only leaves the list: it keeps running and
-// comes back when you write to it or it needs you.
-function remove(key, keys) {
+const closable = (s) => (s.origin || 'vscode-terminal') === 'vscode-terminal' && s.shellPid > 0;
+
+// Trash: a folder goes, and what was in it moves up one level. A session in a VS Code tab closes (its tab closes, which
+// ends Claude; claude --resume continues it later), asking first while Claude still works. A session that runs
+// somewhere else only leaves the list: it keeps running and comes back when you write to it or it needs you.
+async function remove(key, keys) {
   const ids = picked(key, keys);
+  const list = ids.filter((k) => k.startsWith('s:')).map((k) => sessionById.get(k.slice(2))).filter(Boolean);
+  const busy = list.filter((s) => closable(s) && (s.state === 'working' || s.state === 'background'));
+  if (busy.length) {
+    const what = busy.length === 1 ? `Claude is still working in “${busy[0].name}”.` : `Claude is still working in ${busy.length} of these sessions.`;
+    const ok = await vscode.window.showWarningMessage(what, { modal: true, detail: 'Closing the session stops it in the middle of its work.' }, 'Close Session');
+    if (ok !== 'Close Session') return;
+  }
   for (const k of ids) {
     if (k.startsWith('f:')) send({ kind: 'folder', event: 'delete', folder: k.slice(2) });
   }
-  const hide = ids.filter((k) => k.startsWith('s:'));
+  const close = list.filter(closable).map((s) => 's:' + s.id);
+  const hide = list.filter((s) => !closable(s)).map((s) => 's:' + s.id);
+  if (close.length) send({ kind: 'folder', event: 'close', ids: close });
   if (hide.length) send({ kind: 'folder', event: 'hide', ids: hide });
 }
 
@@ -710,6 +727,7 @@ function activate(context) {
     vscode.commands.registerCommand('claudeCodeAlerts.rename', rename),
     vscode.commands.registerCommand('claudeCodeAlerts.deleteFolder', remove),
     vscode.commands.registerCommand('claudeCodeAlerts.removeSession', remove),
+    vscode.commands.registerCommand('claudeCodeAlerts.closeSession', remove),
     vscode.commands.registerCommand('claudeCodeAlerts.moveTo', moveTo),
     vscode.commands.registerCommand('claudeCodeAlerts.moveToTop', moveToTop),
     vscode.commands.registerCommand('claudeCodeAlerts.setStateInput', setState('input')),

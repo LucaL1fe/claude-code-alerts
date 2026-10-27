@@ -2,7 +2,7 @@
   "name": "claude-code-alerts",
   "displayName": "Claude Code Alerts: notifications for Claude Code terminals",
   "description": "Know which Claude Code session is done or needs you, and jump to the exact VS Code terminal tab. Companion of the Claude Code Alerts Mac app.",
-  "version": "0.5.4",
+  "version": "0.5.5",
   "publisher": "lucal1fe",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -90,6 +90,12 @@
       {
         "command": "claudeCodeAlerts.deleteFolder",
         "title": "Delete Folder",
+        "category": "Claude Code Alerts",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "claudeCodeAlerts.closeSession",
+        "title": "Close Session",
         "category": "Claude Code Alerts",
         "icon": "$(trash)"
       },
@@ -182,8 +188,13 @@
           "group": "inline@5"
         },
         {
+          "command": "claudeCodeAlerts.closeSession",
+          "when": "view == claudeCodeAlerts.sessions && viewItem =~ /^session tab/",
+          "group": "inline@5"
+        },
+        {
           "command": "claudeCodeAlerts.removeSession",
-          "when": "view == claudeCodeAlerts.sessions && viewItem =~ /^session/",
+          "when": "view == claudeCodeAlerts.sessions && viewItem =~ /^session( nested)?$/",
           "group": "inline@5"
         },
         {
@@ -237,8 +248,13 @@
           "group": "4_edit@2"
         },
         {
+          "command": "claudeCodeAlerts.closeSession",
+          "when": "view == claudeCodeAlerts.sessions && viewItem =~ /^session tab/",
+          "group": "4_edit@2"
+        },
+        {
           "command": "claudeCodeAlerts.removeSession",
-          "when": "view == claudeCodeAlerts.sessions && viewItem =~ /^session/",
+          "when": "view == claudeCodeAlerts.sessions && viewItem =~ /^session( nested)?$/",
           "group": "4_edit@2"
         }
       ],
@@ -257,6 +273,10 @@
         },
         {
           "command": "claudeCodeAlerts.removeSession",
+          "when": "false"
+        },
+        {
+          "command": "claudeCodeAlerts.closeSession",
           "when": "false"
         },
         {

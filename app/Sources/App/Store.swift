@@ -746,7 +746,8 @@ final class Store: ObservableObject {
     func sessionInfos() -> [SessionInfo] {
         sortedSessions.map {
             SessionInfo(id: $0.id, name: $0.name, state: $0.state.rawValue, detail: $0.detail, shellPid: $0.shellPid,
-                        updated: $0.updated.timeIntervalSince1970, folder: folderOf($0.id), touched: $0.touched.timeIntervalSince1970)
+                        updated: $0.updated.timeIntervalSince1970, folder: folderOf($0.id), touched: $0.touched.timeIntervalSince1970,
+                        origin: $0.origin)
         }
     }
 
@@ -909,6 +910,19 @@ final class Store: ObservableObject {
                 guard sessions[id] != nil else { continue }
                 markSeen(id)
                 hidden.insert(id)
+            }
+        case "close":
+            // Ends the session: the window that has its terminal tab closes it, which ends Claude. It leaves the lists
+            // right away; one that runs somewhere we can't close (not a VS Code tab) only leaves the lists.
+            for item in msg.ids ?? [] where item.hasPrefix("s:") {
+                let id = String(item.dropFirst(2))
+                guard let s = sessions[id] else { continue }
+                markSeen(id)
+                hidden.insert(id)
+                guard s.closable else { continue }
+                var close = Msg(kind: "closeTerminal")
+                close.shellPid = s.shellPid
+                if let owner = windowOwning(s.shellPid) { owner.conn.send(close) } else { for w in windows.values { w.conn.send(close) } }
             }
         case "shift":
             // Move Up / Move Down: swaps the folder with its neighbor.
