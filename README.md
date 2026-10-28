@@ -76,6 +76,20 @@ yourself stay ended. Turn it off with `claudeCodeAlerts.restoreSessions`; what i
 
 <p align="center"><img src="docs/media/sessions.webp" alt="The Claude Sessions view in VS Code updates live; a click opens the session that needs permission" width="900"></p>
 
+### Hit the usage limit? It continues by itself
+
+When a session stops at your 5-hour or weekly usage limit, it waits with a ring dot and the time it goes on
+(`Usage limit · continues at 04:02`). A moment after the limit resets, Claude Code Alerts types a short continue message
+into its VS Code terminal tab, so a long job keeps running overnight instead of waiting for you until morning.
+
+- It does nothing if the session already went on: Claude Code continued by itself, or you wrote to it.
+- Claude Code has its own automatic continue, but it doesn't start while Remote Control is on. This one works either way.
+- The reset time comes from fields Claude Code writes for itself (its status line input and the transcript, including
+  those of background agents), never from message text, so it works in any language and any time format.
+- A session that runs outside a VS Code terminal tab, or whose reset time isn't known, gets an alert instead: when it
+  stops, and again when the limit resets.
+- Switch it off in Settings, or right-click a waiting session in the menu bar list › Don't Continue by Itself.
+
 ### Not now? Snooze it. Away? Nothing gets lost
 
 The clock button brings an alert back in 5 minutes (change it in Settings). While you are away (screen locked, display
@@ -109,6 +123,7 @@ me". Claude does it, and the pill shows Claude's own words.
 | No alert when you are already looking at that tab | Snooze time, sound, voice and the Mac ring are separate switches |
 | Away detection with one summary when you are back | Rename sessions right in the pill (✎) or by asking Claude |
 | Claude can ping you itself: `cca notify --needs-you "…"` | Works with the Claude Code CLI in any terminal; best in VS Code |
+| Sessions continue by themselves after a usage limit resets | Your usage limits in Claude Code's status line |
 
 ## Install
 
@@ -121,8 +136,9 @@ The installer:
 1. builds the menu bar app from source (about a minute, needs the Xcode command line tools) or downloads the latest
    release, and puts it in `/Applications`;
 2. links the `cca` command to `~/.claude-code-alerts/bin/cca`;
-3. adds the hooks to `~/.claude/settings.json` (a backup is saved next to it, your other settings stay untouched) and
-   the skill to `~/.claude/skills/claude-code-alerts`;
+3. adds the hooks and a status line to `~/.claude/settings.json` (a backup is saved next to it, your other settings stay
+   untouched; a status line you already have keeps showing exactly as before) and the skill to
+   `~/.claude/skills/claude-code-alerts`;
 4. installs the VS Code extension and starts the app.
 
 > **Then reload your open VS Code windows once:** `Cmd+Shift+P` › **Developer: Reload Window**. VS Code only loads a
@@ -144,8 +160,12 @@ Claude Code session ──hooks──▶ cca ──socket──▶ Claude Code A
                                                          └──socket──▶ VS Code extension ──▶ focuses the terminal tab
 ```
 
-- **Hooks** (`Stop`, `Notification`, `PermissionRequest`, `PreToolUse` for plans, questions and computer use,
-  `UserPromptSubmit`, `SessionStart`, `SessionEnd`) call `cca hook`. They run asynchronously and never slow Claude down.
+- **Hooks** (`Stop`, `StopFailure`, `Notification`, `PermissionRequest`, `PreToolUse` for plans, questions and computer
+  use, `UserPromptSubmit`, `SessionStart`, `SessionEnd`) call `cca hook`. They run asynchronously and never slow Claude
+  down.
+- **The status line** (`cca statusline`): Claude Code hands its status line your usage limits with their exact reset
+  times. `cca` passes them to the app, then prints your own status line if you had one, else a short
+  `5h 53% · resets 12:50 · week 30%`.
 - **`cca`** finds the session's terminal by walking up the process tree (hook → claude → the terminal's shell) and
   reads the session name from the transcript.
 - **The app** (Swift, AppKit + SwiftUI) keeps the state, applies the rules (urgency, smart suppress, away, snooze) and
@@ -173,8 +193,9 @@ cca status                                   # all sessions and connected VS Cod
 ## Settings
 
 Click the menu bar icon › Settings: Later button (1 min to 1 h, default 5 min) · fold pills away after a while (default
-never) · colored dots in tab titles · sound · voice (says who and what happened, off by default) · red ring when Claude
-uses your Mac · when you count as away · open at login.
+never) · colored dots in tab titles · continue by itself after a usage limit resets · usage limits in the status line ·
+sound · voice (says who and what happened, off by default) · red ring when Claude uses your Mac · when you count as away ·
+open at login.
 
 ## FAQ
 
@@ -191,6 +212,11 @@ uses your Mac · when you count as away · open at login.
 **Why no pill from the Claude app?** With the Claude app in front, the session you last wrote to there finishing gets no
 pill: you are looking at it (like the VS Code tab in front). A scheduled task of the Claude app finishing a run gets none
 either; a question or an error from it still does, and once you write in that session it alerts like any other.
+
+**Why does it set my status line?** Claude Code gives the exact reset times of your usage limits only to the status
+line, and the app needs them to continue a session when the limit resets. If you had a status line, ours runs it and
+prints its output unchanged; uninstalling puts it back. Without one you get a short usage line (switch it off in
+Settings: the line stays empty).
 
 **Does it work without VS Code?** Yes. Alerts, the menu bar and `cca` work with Claude Code in any terminal. Only the
 exact-tab jump and the Claude Sessions view need VS Code.

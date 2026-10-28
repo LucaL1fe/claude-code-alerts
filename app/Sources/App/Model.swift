@@ -83,6 +83,12 @@ struct Session: Codable, Identifiable, Equatable {
     var scheduledTask: String? = nil
     /// The turn running now was started by a schedule, not by you (a scheduled task's first turn).
     var unattended = false
+    /// Stopped at the usage limit and waiting for it to reset.
+    var limit: LimitPause? = nil
+    /// When we typed "continue" into its tab after a reset (cleared when Claude starts), and for which reset (so a session
+    /// that stops again at the same reset is not continued twice).
+    var continuedAt: Date? = nil
+    var continuedReset: Double? = nil
 
     /// Your last interaction with the session, for the list order.
     var touched: Date { lastPrompt ?? started ?? .distantPast }
@@ -98,7 +104,7 @@ struct Session: Codable, Identifiable, Equatable {
 
     enum CodingKeys: String, CodingKey {
         case id, autoName, customName, claudePid, shellPid, tty, cwd, transcript, state, detail, updated, notifyPending, origin, started, lastPrompt
-        case scheduledTask, unattended
+        case scheduledTask, unattended, limit, continuedAt, continuedReset
     }
 
     init(id: String, autoName: String, customName: String?, claudePid: Int32, shellPid: Int32, tty: String?, cwd: String,
@@ -127,7 +133,20 @@ struct Session: Codable, Identifiable, Equatable {
         lastPrompt = try c.decodeIfPresent(Date.self, forKey: .lastPrompt)
         scheduledTask = try c.decodeIfPresent(String.self, forKey: .scheduledTask)
         unattended = try c.decodeIfPresent(Bool.self, forKey: .unattended) ?? false
+        limit = try c.decodeIfPresent(LimitPause.self, forKey: .limit)
+        continuedAt = try c.decodeIfPresent(Date.self, forKey: .continuedAt)
+        continuedReset = try c.decodeIfPresent(Double.self, forKey: .continuedReset)
     }
+}
+
+/// A session that stopped at the usage limit.
+struct LimitPause: Codable, Equatable {
+    var since: Date
+    /// When the limit resets (nil while not known), and which limit it is (five_hour, seven_day, …).
+    var resetsAt: Date?
+    var type: String?
+    /// It continues by itself: we type into its VS Code tab after the reset. Otherwise you get an alert at the reset.
+    var auto: Bool
 }
 
 /// Where a session sits in the Sessions view. Kept after the session ends, so a resumed session finds its folder, the
@@ -176,9 +195,16 @@ final class AppSettings: ObservableObject {
     @Published var backgroundPills: Bool { didSet { d.set(backgroundPills, forKey: "backgroundPills") } }
     /// Seconds after which a pill folds into the notch (it stays in the list). 0 = never.
     @Published var foldSeconds: Int { didSet { d.set(foldSeconds, forKey: "foldSeconds") } }
+    /// A session that stopped at the usage limit continues by itself after the reset (we type into its VS Code tab).
+    @Published var autoContinue: Bool { didSet { d.set(autoContinue, forKey: "autoContinue") } }
+    /// Claude Code's status line shows the usage limits (`cca statusline` reads this; your own status line wins).
+    @Published var statusLineUsage: Bool { didSet { d.set(statusLineUsage, forKey: "statusLineUsage") } }
 
     private init() {
-        d.register(defaults: ["laterMinutes": 5, "sound": true, "voice": false, "macRing": true, "notchBand": false, "awayMinutes": 3, "foldSeconds": 0, "tabDots": true, "edgeGlow": false, "backgroundPills": false])
+        d.register(defaults: ["laterMinutes": 5, "sound": true, "voice": false, "macRing": true, "notchBand": false, "awayMinutes": 3, "foldSeconds": 0, "tabDots": true, "edgeGlow": false, "backgroundPills": false,
+                              "autoContinue": true, "statusLineUsage": true])
+        autoContinue = d.bool(forKey: "autoContinue")
+        statusLineUsage = d.bool(forKey: "statusLineUsage")
         laterMinutes = d.integer(forKey: "laterMinutes")
         sound = d.bool(forKey: "sound")
         voice = d.bool(forKey: "voice")

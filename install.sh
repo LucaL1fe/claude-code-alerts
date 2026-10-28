@@ -70,7 +70,7 @@ say "Adding Claude Code hooks…"
 python3 "$HOME_DIR/hooks.py" install
 mkdir -p "$SKILL_DIR"
 cp "$SRC/plugin/skills/claude-code-alerts/SKILL.md" "$SKILL_DIR/SKILL.md"
-ok "Hooks and skill installed (running sessions pick them up by themselves)"
+ok "Hooks, status line and skill installed (running sessions pick them up by themselves)"
 
 # 4. VS Code extension.
 CODE_CLI="$(command -v code || true)"

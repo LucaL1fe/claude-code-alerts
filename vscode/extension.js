@@ -111,6 +111,17 @@ async function onMessage(m) {
     // Close Session: closing the tab ends Claude.
     const t = await findTerminal(m.shellPid);
     if (t) t.dispose();
+  } else if (m.kind === 'typeText') {
+    // The usage limit has reset: the app has us type into the session's tab, like you would. Esc first closes a menu
+    // Claude Code may show, then the text, then Enter on its own (text and Enter in one go can count as a paste).
+    const t = await findTerminal(m.shellPid);
+    if (out) out.info(`continue after the usage limit: ${t ? 'typing into' : 'no tab for'} shell ${m.shellPid}`);
+    if (!t || !m.text) return;
+    t.sendText('\x1b', false);
+    await sleep(500);
+    t.sendText(m.text, false);
+    await sleep(700);
+    t.sendText('\r', false);
   } else if (m.kind === 'sessions') {
     // The app sends them in order: most urgent first, newest session first within the same urgency.
     sessions = (m.sessions || []).slice();

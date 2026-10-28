@@ -77,6 +77,22 @@ public struct FolderInfo: Codable, Equatable {
     }
 }
 
+/// A usage-limit window as Claude Code reports it (the 5-hour limit, the weekly one, a model's weekly one): when it resets.
+public struct LimitWindow: Codable, Equatable {
+    /// five_hour, seven_day, seven_day_opus, …
+    public var type: String
+    /// Unix seconds.
+    public var resetsAt: Double
+    /// Share used, 0–100 (the status line has it; a refused request counts as 100).
+    public var used: Double?
+
+    public init(type: String, resetsAt: Double, used: Double? = nil) {
+        self.type = type
+        self.resetsAt = resetsAt
+        self.used = used
+    }
+}
+
 /// The one message type on the socket, one JSON object per line. Every field except `kind` is optional.
 public struct Msg: Codable {
     public var kind: String
@@ -108,6 +124,9 @@ public struct Msg: Codable {
     public var source: String?
     /// Background work still running when a turn ended (Stop hook): count and a short description.
     public var pending: Int?
+    /// The turn ended because of the usage limit (Stop / StopFailure), and the limit windows known (with reset times).
+    public var limitStop: Bool?
+    public var limits: [LimitWindow]?
     public var ok: Bool?
 
     public init(kind: String) { self.kind = kind }
@@ -261,6 +280,174 @@ public enum Transcript {
         guard let obj = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any] else { return nil }
         let value = obj[key] as? String
         return (value?.isEmpty ?? true) ? nil : value
+    }
+}
+
+/// What a session's transcript says about the usage limit. Reads only fields Claude Code writes for itself, never message
+/// text, so it works whatever language the session speaks and however your Mac shows times.
+public enum UsageLimit {
+    public struct Scan {
+        /// The turn that just ended stopped for the limit: Claude Code told Claude to wrap up (a note with
+        /// usageLimitNote "wrap_up") or refused a request (error "rate_limit").
+        public var stopped = false
+        /// Reset times of refused requests (quotaLimits.resetsAt) in the session and its subagents, still ahead.
+        public var windows: [LimitWindow] = []
+    }
+
+    public static func scan(transcript path: String?, now: Date = Date()) -> Scan {
+        var out = Scan()
+        guard let path else { return out }
+        // Newest first, back to the prompt that started this turn (only turn starts have a promptSource). Screenshots make
+        // rows big, so the tail is generous; the search runs on bytes, so it stays fast.
+        let main = Tail(path, bytes: 8 << 20)
+        var released = false
+        for line in main.lines {
+            let note = main.has(line, "\"usageLimitNote\"")
+            let quota = main.has(line, "\"quotaLimits\"")
+            let start = main.has(line, "\"promptSource\"")
+            guard note || quota || start, let obj = main.object(line) else { continue }
+            if quota, let w = refused(obj, now: now) {
+                out.windows.append(w)
+                if !released && (obj["error"] as? String) == "rate_limit" { out.stopped = true }
+            }
+            if note {
+                // "release": the limit no longer applies (extra usage, a reset) after an earlier wrap-up note.
+                switch obj["usageLimitNote"] as? String {
+                case "release": if !out.stopped { released = true }
+                case "wrap_up": if !released { out.stopped = true }
+                default: break
+                }
+            }
+            if start && (obj["type"] as? String) == "user" && obj["promptSource"] != nil { break }
+        }
+        // Background agents hit the limit too, and often first: their transcripts have the reset time. (Only read when
+        // the turn stopped for the limit, so an ordinary turn end stays cheap.)
+        let dir = URL(fileURLWithPath: (path as NSString).deletingPathExtension).appendingPathComponent("subagents")
+        let files = !out.stopped ? [] :
+            (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
+        for file in files where file.pathExtension == "jsonl" {
+            let modified = (try? file.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+            guard now.timeIntervalSince(modified) < 12 * 3600 else { continue }
+            let agent = Tail(file.path, bytes: 256 << 10)
+            for line in agent.lines where agent.has(line, "\"quotaLimits\"") {
+                if let obj = agent.object(line), let w = refused(obj, now: now) { out.windows.append(w) }
+            }
+        }
+        // One per limit: the latest reset.
+        var best: [String: LimitWindow] = [:]
+        for w in out.windows where (best[w.type]?.resetsAt ?? 0) < w.resetsAt { best[w.type] = w }
+        out.windows = best.values.sorted { $0.resetsAt < $1.resetsAt }
+        return out
+    }
+
+    /// When the session last did something: the newest prompt or answer in its transcript.
+    public static func lastActivity(transcript path: String?) -> Date? {
+        guard let path else { return nil }
+        let t = Tail(path, bytes: 8 << 20)
+        for line in t.lines where t.has(line, "\"assistant\"") || t.has(line, "\"promptSource\"") {
+            guard let obj = t.object(line), let type = obj["type"] as? String,
+                  type == "assistant" || (type == "user" && obj["promptSource"] != nil),
+                  let stamp = obj["timestamp"] as? String else { continue }
+            return date(stamp)
+        }
+        return nil
+    }
+
+    private static func refused(_ obj: [String: Any], now: Date) -> LimitWindow? {
+        guard let q = obj["quotaLimits"] as? [String: Any],
+              (q["status"] as? String) == "rejected" || (obj["error"] as? String) == "rate_limit",
+              let reset = (q["resetsAt"] as? NSNumber)?.doubleValue, reset > now.timeIntervalSince1970 else { return nil }
+        return LimitWindow(type: q["rateLimitType"] as? String ?? "five_hour", resetsAt: reset, used: 100)
+    }
+
+    private static func date(_ stamp: String) -> Date? {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f.date(from: stamp) ?? ISO8601DateFormatter().date(from: stamp)
+    }
+
+    /// The end of a file as bytes, cut into lines (newest first; a line cut off at the start is left out).
+    private struct Tail {
+        let bytes: [UInt8]
+        let lines: [Range<Int>]
+
+        init(_ path: String, bytes limit: UInt64) {
+            var data = Data()
+            var cut = false
+            if let handle = FileHandle(forReadingAtPath: path) {
+                let size = (try? handle.seekToEnd()) ?? 0
+                cut = size > limit
+                try? handle.seek(toOffset: cut ? size - limit : 0)
+                data = (try? handle.readToEnd()) ?? Data()
+                try? handle.close()
+            }
+            bytes = [UInt8](data)
+            var found: [Range<Int>] = []
+            bytes.withUnsafeBufferPointer { p in
+                guard let base = p.baseAddress else { return }
+                var pos = 0
+                while pos < p.count {
+                    let end = memchr(base + pos, 0x0A, p.count - pos).map { UnsafeRawPointer(base).distance(to: UnsafeRawPointer($0)) } ?? p.count
+                    if end > pos { found.append(pos..<end) }
+                    pos = end + 1
+                }
+            }
+            if cut && !found.isEmpty { found.removeFirst() }
+            lines = found.reversed()
+        }
+
+        func has(_ line: Range<Int>, _ needle: String) -> Bool {
+            let n = Array(needle.utf8)
+            return bytes.withUnsafeBufferPointer { p in
+                n.withUnsafeBufferPointer { q in memmem(p.baseAddress! + line.lowerBound, line.count, q.baseAddress!, q.count) != nil }
+            }
+        }
+
+        func object(_ line: Range<Int>) -> [String: Any]? {
+            (try? JSONSerialization.jsonObject(with: Data(bytes[line]))) as? [String: Any]
+        }
+    }
+}
+
+public enum LimitText {
+    /// "04:00" today, "Thu 04:00" on another day, in your Mac's own time format.
+    public static func when(_ date: Date) -> String {
+        let f = DateFormatter()
+        if Calendar.current.isDateInToday(date) {
+            f.dateStyle = .none
+            f.timeStyle = .short
+        } else {
+            f.setLocalizedDateFormatFromTemplate("EEEjmm")
+        }
+        return f.string(from: date)
+    }
+
+    public static func label(_ type: String) -> String {
+        switch type {
+        case "five_hour": return "5h"
+        case "seven_day": return "week"
+        case "seven_day_opus": return "Opus week"
+        case "seven_day_sonnet": return "Sonnet week"
+        case "spend_limit": return "spend"
+        default: return type.replacingOccurrences(of: "_", with: " ")
+        }
+    }
+
+    /// The 5-hour limit first, then the weekly ones.
+    public static func order(_ type: String) -> Int {
+        type == "five_hour" ? 0 : type == "seven_day" ? 1 : 2
+    }
+
+    /// "5h 82% · resets 04:00 · week 41%": the 5-hour reset always, a weekly one once it is nearly used up.
+    public static func usage(_ windows: [LimitWindow]) -> String {
+        windows.sorted { order($0.type) < order($1.type) }.map { w in
+            var part = LimitText.label(w.type)
+            if let used = w.used { part += " \(Int(used.rounded()))%" }
+            if w.type == "five_hour" || (w.used ?? 0) >= 80 {
+                part += " · resets " + when(Date(timeIntervalSince1970: w.resetsAt))
+            }
+            return part
+        }.joined(separator: " · ")
     }
 }
 

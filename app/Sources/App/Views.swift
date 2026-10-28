@@ -296,6 +296,9 @@ struct SessionRow: View {
                 Divider()
                 Button("Idle") { store.sessionsAction("state", ids: ["s:" + id], state: "idle") }
             }
+            if session.limit?.auto == true {
+                Button("Don't Continue by Itself") { store.keepPaused(id) }
+            }
             Divider()
             MoveMenu(item: "s:" + id)
             if folder != nil { Button("Move to Top Level") { store.sessionsAction("move", ids: ["s:" + id], folder: nil) } }
@@ -565,6 +568,8 @@ struct SettingsView: View {
             Toggle("Colored dot in the terminal tab title (🟢 🟠 🟣 🔴)", isOn: $settings.tabDots)
             Toggle("Glow around the screen for every alert (always on for computer use)", isOn: $settings.edgeGlow)
             Toggle("Pills for background runs (scheduled tasks, claude -p)", isOn: $settings.backgroundPills)
+            Toggle("Continue by itself after a usage limit resets (VS Code terminal tabs)", isOn: $settings.autoContinue)
+            Toggle("Usage limits in Claude Code's status line", isOn: $settings.statusLineUsage)
             Toggle("Sound when something happens", isOn: $settings.sound)
             Toggle("Voice: says who and what happened", isOn: $settings.voice)
             Toggle("Show when Claude uses your Mac (red ring)", isOn: $settings.macRing)

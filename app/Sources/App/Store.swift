@@ -50,6 +50,9 @@ final class Store: ObservableObject {
         didSet { UserDefaults.standard.set(demoMode, forKey: "demoMode") }
     }
     var debugAway = false
+    /// Usage-limit windows (5-hour, weekly…) with their reset times. They are per account, so every session shares them;
+    /// the status line keeps them current. Not saved: they come back with the next status line.
+    private(set) var limits: [String: LimitWindow] = [:]
     var windows: [UUID: VSWindow] = [:]
     var lastMacUse = Date.distantPast
     private var lastPillIds: [UUID] = []
@@ -183,7 +186,9 @@ final class Store: ObservableObject {
                     + (msg.flag == true ? ": " + w.terminals.map { "\($0.name)[\($0.pid)]" }.joined(separator: " | ") : "")
             }.joined(separator: ", ")
             reply.flag = away
+            reply.limits = limits.values.sorted { LimitText.order($0.type) < LimitText.order($1.type) }
             conn.send(reply)
+        case "limits": mergeLimits(msg.limits ?? [], live: true)
         case "settings": Actions.shared.openSettings()
         case "vscodeHello", "vscodeState": handleVSCode(msg, conn)
         case "folder": handleFolder(msg)
@@ -298,6 +303,12 @@ final class Store: ObservableObject {
             let s = sessions[id]
             log("\(event) \(s?.name ?? id) origin=\(s?.origin ?? "-") entry=\(msg.entrypoint ?? "-") state=\(s?.state.rawValue ?? "-") alert=\(alerts.count > before ? "yes" : "no")")
         }
+        // A turn ran, or the conversation started over (/clear): it no longer waits for a usage-limit reset. A session that
+        // was only resumed (after a restart) or compacted still waits.
+        let fresh = event == "SessionStart" && msg.source != "resume" && msg.source != "compact"
+        if fresh || event == "UserPromptSubmit" || (["Stop", "StopFailure"].contains(event) && msg.limitStop != true) {
+            if var s = sessions[id], s.limit != nil || s.continuedAt != nil { s.limit = nil; s.continuedAt = nil; sessions[id] = s }
+        }
         switch event {
         case "SessionStart":
             setState(id, .idle)
@@ -333,6 +344,9 @@ final class Store: ObservableObject {
                 setState(id, .working, "Working · \(tool)")
             }
             if msg.toolName?.hasPrefix("mcp__computer-use__") == true { macUsed(id) }
+        case "Stop" where msg.limitStop == true, "StopFailure" where msg.limitStop == true:
+            if macSessionId == id { endMac(showFree: true) }
+            pauseForLimit(id, msg.limits ?? [])
         case "Stop":
             if macSessionId == id { endMac(showFree: true) }
             if let n = msg.pending, n > 0 {
@@ -372,6 +386,128 @@ final class Store: ObservableObject {
             break
         }
         changed()
+    }
+
+    // MARK: - Usage limit
+
+    /// How long after a reset we continue: Claude Code's own continue (when it does one) comes first. Tests shorten it with
+    /// `defaults write io.github.lucal1fe.claude-code-alerts debugContinueDelay -float 2`.
+    static var continueDelay: TimeInterval { UserDefaults.standard.object(forKey: "debugContinueDelay") as? Double ?? 90 }
+    static let continueText = "The usage limit has reset (Claude Code Alerts typed this). Continue the task you were working on "
+        + "when the limit was reached; don't repeat work that is already done."
+
+    /// The session stopped at the usage limit. With a known reset and a VS Code tab to type into, it waits (ring dot, the
+    /// time in its row) and continues by itself; otherwise you get an alert now and another one once the limit resets.
+    private func pauseForLimit(_ id: String, _ windows: [LimitWindow]) {
+        mergeLimits(windows, live: false)
+        guard var s = sessions[id] else { return }
+        s.limit = LimitPause(since: Date(), resetsAt: nil, type: nil, auto: false)
+        s.continuedAt = nil
+        sessions[id] = s
+        if let reset = resetFor(windows) { arm(id, reset) }
+        showLimit(id)
+    }
+
+    /// Sets the reset a paused session waits for, and whether it continues by itself.
+    private func arm(_ id: String, _ reset: LimitWindow) {
+        guard var s = sessions[id], var p = s.limit else { return }
+        p.resetsAt = Date(timeIntervalSince1970: reset.resetsAt)
+        p.type = reset.type
+        // Continued once for this very reset and stopped again (a weekly limit right behind it, say): no second try.
+        p.auto = settings.autoContinue && s.closable && s.continuedReset != reset.resetsAt
+        s.limit = p
+        sessions[id] = s
+    }
+
+    /// A paused session's state, detail and alert, from what is known now.
+    private func showLimit(_ id: String) {
+        guard let p = sessions[id]?.limit else { return }
+        if p.auto, let reset = p.resetsAt {
+            // Claude goes on by itself, like after background work: no alert, a ring and the time in its row.
+            alerts.removeAll { $0.sessionId == id && $0.kind != .mac && $0.kind != .free }
+            setState(id, .background, "Usage limit · continues at \(LimitText.when(reset.addingTimeInterval(Self.continueDelay)))")
+        } else {
+            raise(id, .error, p.resetsAt.map { "Usage limit · resets \(LimitText.when($0))" } ?? "Usage limit reached", source: "limit")
+        }
+    }
+
+    /// You don't want this one to continue by itself: it waits for you, with an alert at the reset.
+    func keepPaused(_ id: String) {
+        guard var s = sessions[id], var p = s.limit else { return }
+        p.auto = false
+        s.limit = p
+        sessions[id] = s
+        setState(id, .idle, p.resetsAt.map { "Usage limit · resets \(LimitText.when($0)), continue it yourself" } ?? "Usage limit")
+        changed()
+    }
+
+    /// Usage-limit windows seen anywhere. The status line has the current ones; a refused request's reset only replaces
+    /// an older one. A paused session that didn't know its reset yet gets it here.
+    private func mergeLimits(_ windows: [LimitWindow], live: Bool) {
+        let now = Date().timeIntervalSince1970
+        var next = limits.filter { $0.value.resetsAt > now }
+        for w in windows where w.resetsAt > now && (live || (next[w.type]?.resetsAt ?? 0) < w.resetsAt) { next[w.type] = w }
+        guard next != limits else { return }
+        limits = next
+        var dirty = false
+        for (id, s) in sessions where s.limit != nil && s.limit?.resetsAt == nil {
+            guard let reset = resetFor([]) else { continue }
+            arm(id, reset)
+            showLimit(id)
+            dirty = true
+        }
+        if dirty { changed() }
+    }
+
+    /// When the limit a session stopped at resets: a refused request's own reset, else the window that is used up (the
+    /// latest if several are), else the fullest one.
+    private func resetFor(_ stopWindows: [LimitWindow]) -> LimitWindow? {
+        let now = Date().timeIntervalSince1970
+        if let w = stopWindows.filter({ $0.resetsAt > now }).max(by: { $0.resetsAt < $1.resetsAt }) { return w }
+        let known = limits.values.filter { $0.resetsAt > now }
+        if let w = known.filter({ ($0.used ?? 0) >= 99.5 }).max(by: { $0.resetsAt < $1.resetsAt }) { return w }
+        let rank = { (w: LimitWindow) in (w.used ?? 0, w.type == "five_hour" ? 1 : 0) }
+        return known.max { rank($0) < rank($1) }
+    }
+
+    /// Paused sessions whose limit has reset: we type into the tab (a short moment after the reset), or tell you.
+    private func checkLimits(_ now: Date) -> Bool {
+        var dirty = false
+        for (id, s) in sessions {
+            if let at = s.continuedAt, now.timeIntervalSince(at) > 90 {
+                // Typed, but Claude did not start a turn (no UserPromptSubmit). A window still running an older
+                // extension (no reload since the update) ignores the request.
+                sessions[id]?.continuedAt = nil
+                raise(id, .error, "Usage limit has reset, but the continue didn't reach Claude (just updated? Reload the VS Code window once)",
+                      source: "limit")
+                dirty = true
+            }
+            guard let p = s.limit, let reset = p.resetsAt else { continue }
+            let auto = p.auto && settings.autoContinue
+            guard now >= (auto ? reset.addingTimeInterval(Self.continueDelay) : reset) else { continue }
+            sessions[id]?.limit = nil
+            dirty = true
+            // It went on already (Claude Code's own continue, or you typed): nothing to do.
+            let busy = ClaudeSessions.scan().first { $0.pid == s.claudePid }?.busy ?? false
+            if busy || UsageLimit.lastActivity(transcript: s.transcript).map({ $0 > p.since.addingTimeInterval(2) }) == true {
+                log("limit-reset \(s.name): already going on")
+                continue
+            }
+            guard auto, let owner = windowOwning(s.shellPid) else {
+                raise(id, .input, auto ? "Usage limit has reset · its VS Code window is closed, continue it yourself"
+                                       : "Usage limit has reset · you can continue", source: "limit")
+                continue
+            }
+            var type = Msg(kind: "typeText")
+            type.shellPid = s.shellPid
+            type.text = Self.continueText
+            owner.conn.send(type)
+            sessions[id]?.continuedAt = now
+            sessions[id]?.continuedReset = reset.timeIntervalSince1970
+            setState(id, .working, "Continuing after the usage limit")
+            log("limit-continue \(s.name) reset=\(Int(reset.timeIntervalSince1970))")
+        }
+        return dirty
     }
 
     private func handleNotify(_ msg: Msg) {
@@ -672,6 +808,7 @@ final class Store: ObservableObject {
             }
         }
         if macSessionId != nil, now.timeIntervalSince(lastMacUse) > 60 { endMac(showFree: true); dirty = true }
+        if checkLimits(now) { dirty = true }
         let pillIds = pills.map(\.id)
         if pillIds != lastPillIds { lastPillIds = pillIds; dirty = true }
         // Drop sessions whose Claude process ended without SessionEnd.
@@ -991,6 +1128,11 @@ final class Store: ObservableObject {
                 endMac(showFree: true)
             default:
                 raise(id, kind, msg.text?.isEmpty == false ? msg.text! : kind.label)
+            }
+        case "limit":
+            // As if the session in that terminal stopped at the usage limit (reset from the message).
+            if let pid = msg.shellPid, let s = sessions.values.first(where: { $0.shellPid == pid }) {
+                pauseForLimit(s.id, msg.limits ?? [])
             }
         case "away":
             debugAway = msg.flag ?? false

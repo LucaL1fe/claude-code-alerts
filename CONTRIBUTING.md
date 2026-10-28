@@ -38,6 +38,9 @@ Try things without a real session:
 ```bash
 cca debug event --name my-session --state done --text "It works"   # also input, review, error, mac, free
 cca debug away on|off
+cca debug limit --shell <PID> --in 60   # that terminal's session stops at the usage limit, which resets in 60 s
+cca debug scan <transcript.jsonl>       # what the usage-limit reader finds in a transcript
+echo '{…hook json…}' | cca hook --dry-run   # the message a hook would send to the app
 cca debug clear
 cca status
 tail -f ~/Library/Application\ Support/claude-code-alerts/events.log   # every hook event and what the app did

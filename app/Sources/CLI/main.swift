@@ -4,7 +4,7 @@ import Shared
 // cca: the command line side of Claude Code Alerts.
 // Hooks call `cca hook` (hook JSON on stdin). Claude itself can call `cca notify`, `cca rename`, `cca mac`.
 
-let version = "0.5.5"
+let version = "0.6.0"
 var args = Array(CommandLine.arguments.dropFirst())
 
 func usage() -> Never {
@@ -12,7 +12,8 @@ func usage() -> Never {
     cca \(version) · Claude Code Alerts
 
     Used by Claude Code hooks:
-      cca hook                         read a hook event from stdin and forward it
+      cca hook [--dry-run]             read a hook event from stdin and forward it (--dry-run: print it)
+      cca statusline                   Claude Code's status line: usage limits to the app, your old status line
 
     Ask for your attention from a Claude session:
       cca notify [--needs-you|--done|--plan|--error] <text>
@@ -24,6 +25,8 @@ func usage() -> Never {
       cca status                       list known sessions
       cca settings                     open the settings window
       cca debug event --name N --state done|input|review|error [--text T] [--id ID] [--shell PID]
+      cca debug limit --shell PID [--in SECONDS] [--type five_hour]   as if that session stopped for the usage limit
+      cca debug scan <transcript.jsonl>                                what the usage-limit reader finds in a transcript
       cca debug away on|off            pretend you are away / back
       cca debug demo on|off            demo mode: ignore real sessions (for recordings)
       cca debug clear                  remove all alerts
@@ -107,7 +110,8 @@ func runHook() {
             msg.toolName = TextUtil.firstLine(str(tasks[0]["description"]) ?? str(tasks[0]["command"]) ?? str(tasks[0]["type"]), max: 80)
         }
     case "StopFailure":
-        msg.text = str(json["error_message"]) ?? str(json["error"]) ?? str(json["reason"]) ?? str(json["error_type"]) ?? "Stopped with an error"
+        msg.text = str(json["last_assistant_message"]) ?? str(json["error_message"]) ?? str(json["error"]) ?? str(json["reason"])
+            ?? str(json["error_type"]) ?? "Stopped with an error"
         msg.text = TextUtil.firstLine(msg.text)
     case "Notification":
         msg.text = TextUtil.firstLine(str(json["message"]))
@@ -126,6 +130,18 @@ func runHook() {
         break
     }
 
+    if event == "Stop" || event == "StopFailure" {
+        // Stopped for the usage limit? The transcript says so (and when it resets) in fields, not in words.
+        let scan = UsageLimit.scan(transcript: msg.transcript)
+        if scan.stopped || (event == "StopFailure" && str(json["error"]) == "rate_limit") { msg.limitStop = true }
+        if !scan.windows.isEmpty { msg.limits = scan.windows }
+    }
+
+    if args.contains("--dry-run") {
+        // For tests: the message the app would get.
+        FileHandle.standardOutput.write(Wire.encode(msg))
+        exit(0)
+    }
     if event == "SessionStart" {
         // Synchronous: re-apply a name you gave this session earlier.
         let reply = deliver(msg, waitReply: true)
@@ -137,6 +153,47 @@ func runHook() {
         deliver(msg)
     }
     exit(0)
+}
+
+/// Claude Code's status line (hooks.py sets it up). Hands the usage limits Claude Code puts in its input (with their exact
+/// reset times) to the app, then prints the status line you had before, else a short usage line.
+func runStatusLine() {
+    let data = FileHandle.standardInput.readDataToEndOfFile()
+    let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
+    var windows: [LimitWindow] = []
+    for (type, value) in json["rate_limits"] as? [String: Any] ?? [:] {
+        guard let w = value as? [String: Any], let reset = (w["resets_at"] as? NSNumber)?.doubleValue else { continue }
+        windows.append(LimitWindow(type: type, resetsAt: reset, used: (w["used_percentage"] as? NSNumber)?.doubleValue))
+    }
+    if !windows.isEmpty {
+        var msg = Msg(kind: "limits")
+        msg.sessionId = str(json["session_id"])
+        msg.limits = windows
+        // Never starts the app: the status line runs all the time.
+        SocketClient.send(msg, timeout: 0.3)
+    }
+    // The same home as hooks.py, which saved it ($HOME first).
+    let home = ProcessInfo.processInfo.environment["HOME"] ?? NSHomeDirectory()
+    let saved = URL(fileURLWithPath: home + "/.claude-code-alerts/statusline.json")
+    if let d = try? Data(contentsOf: saved), let original = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any],
+       let command = str(original["command"]) {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/bin/sh")
+        p.arguments = ["-c", command]
+        let input = Pipe()
+        let output = Pipe()
+        p.standardInput = input
+        p.standardOutput = output
+        p.standardError = FileHandle.nullDevice
+        guard (try? p.run()) != nil else { return }
+        input.fileHandleForWriting.write(data)
+        try? input.fileHandleForWriting.close()
+        FileHandle.standardOutput.write(output.fileHandleForReading.readDataToEndOfFile())
+        p.waitUntilExit()
+        return
+    }
+    let show = UserDefaults(suiteName: CCA.bundleId)?.object(forKey: "statusLineUsage") as? Bool ?? true
+    if show && !windows.isEmpty { print("\u{1b}[2m\(LimitText.usage(windows))\u{1b}[0m") }
 }
 
 func flagValue(_ flag: String) -> String? {
@@ -152,6 +209,9 @@ args.removeFirst()
 switch command {
 case "hook":
     runHook()
+
+case "statusline":
+    runStatusLine()
 
 case "notify":
     var msg = Msg(kind: "notify")
@@ -191,6 +251,7 @@ case "status":
             print("\(s.state.padding(toLength: 8, withPad: " ", startingAt: 0)) \(s.name)  · \(s.detail)  [shell \(s.shellPid)]")
         }
         print("VS Code windows: \(reply.text?.isEmpty == false ? reply.text! : "none connected")")
+        if let limits = reply.limits, !limits.isEmpty { print("Usage limits: \(LimitText.usage(limits))") }
         if reply.flag == true { print("You count as away right now") }
     } else {
         print("The app is not running")
@@ -212,6 +273,22 @@ case "debug":
         msg.sessionId = flagValue("--id") ?? "debug-" + (msg.name ?? "x")
         if let p = flagValue("--shell"), let pid = Int32(p) { msg.shellPid = pid }
         msg.cwd = flagValue("--cwd") ?? FileManager.default.currentDirectoryPath
+    case "limit":
+        // As if that session stopped for the usage limit, with the reset in --in seconds (default 60).
+        if let p = flagValue("--shell"), let pid = Int32(p) { msg.shellPid = pid }
+        let seconds = Double(flagValue("--in") ?? "60") ?? 60
+        msg.limits = [LimitWindow(type: flagValue("--type") ?? "five_hour", resetsAt: Date().timeIntervalSince1970 + seconds, used: 100)]
+    case "scan":
+        // What the usage-limit reader finds in a transcript (no app needed).
+        let now = flagValue("--now").flatMap { ISO8601DateFormatter().date(from: $0) } ?? Date()
+        guard let path = args.first else { usage() }
+        let scan = UsageLimit.scan(transcript: path, now: now)
+        print("stopped for the limit: \(scan.stopped)")
+        for w in scan.windows {
+            print("\(w.type) resets \(ISO8601DateFormatter().string(from: Date(timeIntervalSince1970: w.resetsAt))) (\(LimitText.when(Date(timeIntervalSince1970: w.resetsAt))))")
+        }
+        if let last = UsageLimit.lastActivity(transcript: path) { print("last activity \(ISO8601DateFormatter().string(from: last))") }
+        exit(0)
     case "away", "demo":
         msg.flag = (args.first ?? "on") == "on"
     case "goto":
