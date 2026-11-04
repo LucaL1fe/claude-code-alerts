@@ -250,6 +250,24 @@ public enum Proc {
         return nil
     }
 
+    /// Other coding agents that can run Claude Code's hooks (Codex imports them). Their runs are not Claude sessions.
+    static let otherAgents = ["codex"]
+
+    /// True when a hook was started by another agent: one of them comes before the first Claude Code ancestor. A
+    /// `codex exec` started from a Claude session would otherwise count as one more session in that session's tab.
+    public static func calledByOtherAgent(from start: pid_t = getppid()) -> Bool {
+        var pid = start
+        for _ in 0..<12 {
+            guard pid > 1, let info = info(pid) else { return false }
+            if isClaude(info) { return false }
+            let comm = info.comm.lowercased()
+            let exe = path(info.pid)?.lowercased() ?? ""
+            if otherAgents.contains(where: { comm.contains($0) || exe.contains("/\($0)") }) { return true }
+            pid = info.ppid
+        }
+        return false
+    }
+
     public static func isAlive(_ pid: pid_t) -> Bool {
         pid > 0 && (kill(pid, 0) == 0 || errno == EPERM)
     }
@@ -257,6 +275,16 @@ public enum Proc {
 
 /// Reads the session's display name from the end of its transcript.
 public enum Transcript {
+    /// A transcript another agent wrote (Codex keeps its own in ~/.codex/sessions or $CODEX_HOME): not a Claude session.
+    public static func isOtherAgent(_ path: String?) -> Bool {
+        guard let path, !path.isEmpty else { return false }
+        if path.contains("/.codex/") { return true }
+        if let home = ProcessInfo.processInfo.environment["CODEX_HOME"], !home.isEmpty {
+            return path.hasPrefix(home.hasSuffix("/") ? home : home + "/")
+        }
+        return false
+    }
+
     public static func name(path: String?) -> String? {
         guard let path, let handle = FileHandle(forReadingAtPath: path) else { return nil }
         defer { try? handle.close() }

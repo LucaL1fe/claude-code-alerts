@@ -127,15 +127,19 @@ final class Store: ObservableObject {
 
     func load() {
         guard let data = try? Data(contentsOf: stateURL), let saved = try? JSONDecoder().decode(Saved.self, from: data) else { return }
-        // Sessions whose Claude process is gone are dropped, with their alerts (debug sessions stay).
-        sessions = saved.sessions.filter { $0.key.hasPrefix("debug-") || Proc.isAlive($0.value.claudePid) }
+        // Sessions whose Claude process is gone are dropped, with their alerts (debug sessions stay). So are other agents'
+        // runs that older versions listed, with their places.
+        let foreign = Set(saved.sessions.filter { Transcript.isOtherAgent($0.value.transcript) }.keys)
+        sessions = saved.sessions.filter {
+            $0.key.hasPrefix("debug-") || (Proc.isAlive($0.value.claudePid) && !foreign.contains($0.key))
+        }
         alerts = saved.alerts.filter { sessions[$0.sessionId] != nil && $0.kind != .mac && $0.kind != .free }
         for i in alerts.indices { alerts[i].queued = false }
         hidden = Set((saved.hidden ?? []).filter { sessions[$0] != nil })
         folders = Dictionary((saved.folders ?? []).map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         // Places of running sessions, and of the 300 sessions used last (for resuming them).
         let last = { (p: Place) in max(p.used, p.touched ?? p.used) }
-        let kept = (saved.places ?? [:]).filter { sessions[$0.key] == nil }.sorted { last($0.value) > last($1.value) }.prefix(300)
+        let kept = (saved.places ?? [:]).filter { sessions[$0.key] == nil && !foreign.contains($0.key) }.sorted { last($0.value) > last($1.value) }.prefix(300)
         places = Dictionary(uniqueKeysWithValues: Array(kept))
         for (id, p) in saved.places ?? [:] where sessions[id] != nil { var q = p; q.used = Date(); places[id] = q }
         for id in sessions.keys where places[id] == nil { place(id) }
@@ -297,6 +301,11 @@ final class Store: ObservableObject {
 
     private func handleHook(_ msg: Msg, _ conn: Conn) {
         if demoMode && !isDemoSession(msg) { return }
+        // Another agent's run (an older cca still forwards Codex's hook calls): not a session. SessionStart waits for a reply.
+        if Transcript.isOtherAgent(msg.transcript) {
+            if msg.event == "SessionStart" { conn.send(Msg(kind: "ok")) }
+            return
+        }
         guard let event = msg.event, let id = upsert(msg) else { return }
         let before = alerts.count
         defer {

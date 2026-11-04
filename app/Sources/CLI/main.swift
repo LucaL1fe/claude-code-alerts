@@ -4,7 +4,7 @@ import Shared
 // cca: the command line side of Claude Code Alerts.
 // Hooks call `cca hook` (hook JSON on stdin). Claude itself can call `cca notify`, `cca rename`, `cca mac`.
 
-let version = "0.6.0"
+let version = "0.6.1"
 var args = Array(CommandLine.arguments.dropFirst())
 
 func usage() -> Never {
@@ -85,6 +85,12 @@ func runHook() {
     let data = FileHandle.standardInput.readDataToEndOfFile()
     guard let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { exit(0) }
     let event = str(json["hook_event_name"]) ?? "unknown"
+    // Codex can run Claude Code's hooks (it imports them). Its runs are not Claude sessions: one started from a Claude
+    // session would show up as one more row with that session's name, and never leave the list.
+    if Proc.calledByOtherAgent() || Transcript.isOtherAgent(str(json["transcript_path"])) {
+        if args.contains("--dry-run") { print("skip: not a Claude Code session") }
+        exit(0)
+    }
     var msg = Msg(kind: "hook")
     msg.event = event
     msg.sessionId = str(json["session_id"])
