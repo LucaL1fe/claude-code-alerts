@@ -945,6 +945,11 @@ final class Store: ObservableObject {
         (folders.values.filter { $0.parent == parent }.compactMap(\.order).max() ?? -1) + 1
     }
 
+    /// Before the first folder in `parent`: a new folder is usually wanted right away, so it starts on top.
+    private func firstOrder(_ parent: String?) -> Double {
+        (folders.values.filter { $0.parent == parent }.map { $0.order ?? 0 }.min() ?? 1) - 1
+    }
+
     /// Folder `id` is `folder` itself or one of its subfolders.
     private func isWithin(_ id: String?, _ folder: String) -> Bool {
         var cur = id
@@ -971,7 +976,7 @@ final class Store: ObservableObject {
     func createFolder(_ name: String, in parent: String?) -> String {
         let parent = parent.flatMap { folders[$0] != nil ? $0 : nil }
         let id = UUID().uuidString.lowercased()
-        folders[id] = FolderInfo(id: id, name: name, parent: parent, order: nextOrder(parent), demo: demoMode ? true : nil)
+        folders[id] = FolderInfo(id: id, name: name, parent: parent, order: firstOrder(parent), demo: demoMode ? true : nil)
         changed()
         return id
     }
