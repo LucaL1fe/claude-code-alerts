@@ -21,8 +21,8 @@ Companion extension of the [Claude Code Alerts](https://github.com/LucaL1fe/clau
   waiting for the usage limit to reset).
 - **Prompt pad** (double-click a session, the pad button on a row, ⌘Enter, or the house in the title bar): notes and a
   queue of prompts for each session, each folder and the top level, in a tab next to the session. Send now, send next
-  (when the turn is over) or auto-send down to a line you drag; paste pictures as `[Image #n]`; drag anything anywhere;
-  a board view; closed sessions and deleted folders leave their notes and prompts in Deleted. Files in
+  (when the turn is over) or auto-send down to a line you drag; paste pictures as `[Image #n]` (hover to see, click to
+  open); lists that go on with Enter and nest with Tab; duplicate a prompt; drag anything anywhere; a board view; closed sessions and deleted folders leave their notes and prompts in Deleted. Files in
   `~/.claude-code-alerts/pad`.
 - Status bar item with the number of sessions waiting for you.
 - Renames the terminal tab when you rename a session in the app or ask Claude to.

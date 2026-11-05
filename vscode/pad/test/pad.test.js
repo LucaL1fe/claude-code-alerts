@@ -163,5 +163,57 @@ test('a session that just left the list is not gone yet', () => {
   assert.equal(M.view(ctx, null).deleted.length, 0);
 });
 
+test('a new prompt\'s title is not sent, and a prompt with only that title has nothing to send', () => {
+  const p = (text) => ({ kind: 'prompt', text });
+  assert.equal(M.promptText(p(M.NEW_TITLE + '\n\nFix the header'), (n) => n), 'Fix the header');
+  assert.equal(M.promptText(p('Header\n\nFix it'), (n) => n), 'Header\n\nFix it');
+  assert.equal(M.hasText(p(M.NEW_TITLE)), false);
+  assert.equal(M.hasText(p(M.NEW_TITLE + '\n\nx')), true);
+  assert.equal(M.promptText({ kind: 'note', text: M.NEW_TITLE }, (n) => n), M.NEW_TITLE);
+  assert.equal(M.promptText({ kind: 'prompt', images: ['a.png', 'b.png'], text: 'T\n\nsee [Image #2]' }, (n) => '/i/' + n), 'T\n\nsee /i/b.png\n\n/i/a.png');
+  const s = { id: 'S', state: 'idle', touched: 0, ended: 0 };
+  assert.equal(M.decide(s, [{ id: 'a', kind: 'prompt', status: 'queued', order: 1, text: M.NEW_TITLE }], {}, Date.now()), null);
+});
+
+// "|" marks the caret (two of them: a selection).
+const at = (s) => { const a = s.indexOf('|'); const v = s.replace('|', ''); const b = v.indexOf('|'); return b < 0 ? [v, a, a] : [v.replace('|', ''), a, b]; };
+const show = (r) => r && (r.start === r.end ? r.value.slice(0, r.start) + '|' + r.value.slice(r.start) : r.value.slice(0, r.start) + '|' + r.value.slice(r.start, r.end) + '|' + r.value.slice(r.end));
+const enter = (s) => show(M.listEnter(...at(s)));
+const tab = (s, back) => show(M.listTab(...at(s), back));
+
+test('lists: Enter goes on with the next bullet or number', () => {
+  assert.equal(enter('- one|'), '- one\n- |');
+  assert.equal(enter('  * one|'), '  * one\n  * |');
+  assert.equal(enter('- [x] done|'), '- [x] done\n- [ ] |');
+  assert.equal(enter('9. nine|'), '9. nine\n10. |');
+  assert.equal(enter('1) a|'), '1) a\n2) |');
+  assert.equal(enter('1. ab|cd'), '1. ab\n2. |cd');
+  assert.equal(enter('plain|'), null);
+  assert.equal(enter('|- one'), null, 'the caret before the marker: a plain Enter');
+  assert.equal(enter('1.5 percent|'), null);
+});
+
+test('lists: the numbers below move on, up to a blank line', () => {
+  assert.equal(enter('1. a|\n2. b\n   - sub\n3. c\n\n4. d'), '1. a\n2. |\n3. b\n   - sub\n4. c\n\n4. d');
+  assert.equal(enter('1. a|\nmore text\n2. b'), '1. a\n2. |\nmore text\n2. b');
+});
+
+test('lists: Enter on an empty item ends the list, or moves it out a level', () => {
+  assert.equal(enter('- a\n- |'), '- a\n|');
+  assert.equal(enter('1. a\n2. |\n\nnext'), '1. a\n|\n\nnext');
+  assert.equal(enter('1. a\n   - |'), '1. a\n- |');
+  assert.equal(enter('1. a\n   1. |'), '1. a\n2. |');
+});
+
+test('lists: Tab and Shift+Tab move an item in and out, numbers follow their level', () => {
+  assert.equal(tab('1. a\n2. b|'), '1. a\n   1. b|');
+  assert.equal(tab('- a\n- b|'), '- a\n  - b|');
+  assert.equal(tab('1. a\n   1. b\n2. c|'), '1. a\n   1. b\n   2. c|');
+  assert.equal(tab('1. a\n   1. b|', true), '1. a\n2. b|');
+  assert.equal(tab('- a|', true), '- a|', 'already all the way out: nothing changes, the focus stays');
+  assert.equal(tab('plain|'), null);
+  assert.equal(tab('|- a\n- b|'), '|  - a\n  - b|');
+});
+
 if (failed) { console.log(`\n${failed} failed`); process.exit(1); }
 console.log('\nall passed');

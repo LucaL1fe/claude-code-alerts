@@ -45,6 +45,7 @@
     check: svg('<path d="M3 8.5l3 3 7-7"/>'),
     x: '<svg width="8" height="8" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M2 2l6 6M8 2l-6 6"/></svg>',
     copy: svg('<rect x="5" y="5" width="8.5" height="8.5" rx="1"/><path d="M3 10.5V3.5a1 1 0 0 1 1-1h6.5"/>'),
+    dup: svg('<rect x="5" y="5" width="8.5" height="8.5" rx="1"/><path d="M3 10.5V3.5a1 1 0 0 1 1-1h6.5"/><path d="M9.25 7.2v4.1M7.2 9.25h4.1"/>'),
     folder: svg('<path d="M1.5 4h4.5l1.2 1.3h7.3v7.2h-13z"/>'),
     search: svg('<circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5l3 3"/>')
   };
@@ -128,17 +129,30 @@
     if (now) send(); else saveTimers.set(id, setTimeout(send, 350));
   }
 
+  // A new prompt gets a title to start with, and you write in its description right away.
   function create(place, kind, sectionItems, { atTop = true, status } = {}) {
     const id = newId();
     const first = sectionItems[0];
     const last = sectionItems[sectionItems.length - 1];
     const order = atTop ? M.between(null, first ? first.order : null) : M.between(last ? last.order : null, null);
-    const fields = { kind, place, status: status || (kind === 'prompt' ? 'todo' : 'open'), order, created: Date.now(), text: '', draft: true };
+    const text = kind === 'prompt' ? M.NEW_TITLE : '';
+    const fields = { kind, place, status: status || (kind === 'prompt' ? 'todo' : 'open'), order, created: Date.now(), text, draft: true };
     local.set(id, { ...fields, _new: true });
     state.fold['item:' + id] = true;
     post({ t: 'put', id, patch: fields });
     render();
-    focusItem(id);
+    focusItem(id, kind === 'prompt' ? 'textarea.desc' : 'textarea');
+  }
+
+  // A copy right below it in its Todo (the pictures are shared), shown for a moment.
+  function duplicate(it) {
+    const list = M.sections(M.context(dataNow()), it.place).todo;
+    const below = list[list.findIndex((x) => x.id === it.id) + 1];
+    const id = newId();
+    const { id: _, where, sentAt, doneAt, sending, error, draft, _new, _pending, ...rest } = it;
+    post({ t: 'put', id, patch: { ...rest, status: 'todo', order: M.between(it.order || 0, below ? below.order : null), created: Date.now() } });
+    state.flash = { id, until: Date.now() + 1200 };
+    setTimeout(render, 1300);
   }
 
   function remove(id) {
@@ -273,18 +287,30 @@
     e.preventDefault();
     const it = byId(id);
     let n = (it && it.images ? it.images.length : 0) + ((local.get(id) || {})._pending || 0);
+    let tags = '';
     for (const f of files) {
       const file = f.getAsFile();
       if (!file) continue;
       n += 1;
-      ta.focus();
-      document.execCommand('insertText', false, `[Image #${n}]`);
+      tags += `[Image #${n}]`;
       const r = new FileReader();
       r.onload = () => post({ t: 'image', id, data: r.result });
       r.readAsDataURL(file);
     }
     local.set(id, { ...(local.get(id) || {}), _pending: n - (it && it.images ? it.images.length : 0) });
-    ta.dispatchEvent(new Event('input'));
+    // VS Code pastes into the page with execCommand('paste'), and an execCommand inside another one does nothing: the
+    // tags go in right after the paste.
+    setTimeout(() => { ta.focus(); insertText(ta, tags, ta.selectionStart, ta.selectionEnd); }, 0);
+  }
+
+  // Text in place of start…end, the way typing does it (⌘Z undoes it), else set directly.
+  function insertText(ta, text, start, end) {
+    ta.setSelectionRange(start, end);
+    const ok = text ? document.execCommand('insertText', false, text) : document.execCommand('delete');
+    if (!ok) {
+      ta.setRangeText(text, start, end, 'end');
+      ta.dispatchEvent(new Event('input'));
+    }
   }
 
   // ---------- rows ----------
@@ -295,7 +321,158 @@
   const splitPrompt = (text) => { const t = String(text || ''); const i = t.indexOf('\n'); return i < 0 ? [t, ''] : [t.slice(0, i), t.slice(i + 1).replace(/^\n/, '')]; };
   const joinPrompt = (title, desc) => (desc ? `${title}\n\n${desc}` : title);
 
-  function autosize(ta) { ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px'; }
+  // ---------- text fields ----------
+  // A field grows with its text without being measured: a copy of the text right behind it (the mirror) gives it its
+  // height and draws the colors (list markers, headings, code, links, picture tags); the field itself shows only the
+  // caret and the selection. (Measuring by shrinking the field made the page jump up while you typed at its bottom.)
+  // marks: 'lines' (lists, headings, quotes and the inline marks), 'inline' (code, links, picture tags) or none.
+  // images: the item's pictures, for its [Image #n] tags (hover shows the picture, a click opens it).
+  function editor(key, cls, props, { marks, images } = {}) {
+    const ta = el(key, 'textarea', {
+      ...props, class: cls, rows: 1, spellcheck: false,
+      onmousemove: (e) => hoverTag(e.target, e),
+      onmouseleave: (e) => hoverTag(e.target, null),
+      onclick: (e) => { const name = tagImage(e.target, e); if (name && e.target.selectionStart === e.target.selectionEnd) post({ t: 'openImage', name }); }
+    });
+    const mirror = el(key + ':mi', 'div', { class: 'mirror', 'aria-hidden': 'true' });
+    ta._mirror = mirror;
+    ta._marks = marks;
+    ta._images = images || [];
+    paint(ta);
+    return el(key + ':ed', 'div', { class: 'ed ' + cls }, [mirror, ta]);
+  }
+
+  const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+  function paint(ta) {
+    const m = ta._mirror;
+    if (!m) return;
+    const v = ta.value;
+    const marks = ta._marks === 'lines' ? marked : ta._marks === 'inline' ? inline : esc;
+    // An empty field is as tall as its placeholder; a last empty line needs something in it to count.
+    const html = !v ? `<span class="ph">${esc(ta.placeholder || ' ')}</span>` : marks(v) + (v.endsWith('\n') ? '​' : '');
+    if (m._html !== html) { m.innerHTML = html; m._html = html; hoverTag(ta, null); }
+    if (ta.scrollTop) ta.scrollTop = 0;
+  }
+
+  // The picture tag under the mouse (the tags are drawn in the mirror, under the field).
+  function tagAt(ta, e) {
+    if (!e || !ta._mirror) return null;
+    for (const s of ta._mirror.querySelectorAll('.mi')) {
+      for (const r of s.getClientRects()) if (e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) return s;
+    }
+    return null;
+  }
+  function tagImage(ta, e) {
+    const s = tagAt(ta, e);
+    const n = s ? +(s.textContent.match(/#(\d+)/) || [])[1] : 0;
+    return n ? ta._images[n - 1] || null : null;
+  }
+
+  // Hovering a picture tag: a pointer and the picture next to it.
+  const preview = Object.assign(document.createElement('div'), { className: 'preview' });
+  const previewImg = preview.appendChild(document.createElement('img'));
+  document.body.appendChild(preview);
+  function hoverTag(ta, e) {
+    const s = tagAt(ta, e);
+    const name = tagImage(ta, e);
+    ta.style.cursor = name ? 'pointer' : '';
+    ta.title = name ? 'Click to open the picture' : '';
+    if (ta._mirror) for (const x of ta._mirror.querySelectorAll('.mi.hover')) if (x !== s) x.classList.remove('hover');
+    if (!name) { if (preview._for === ta || !e) preview.style.display = 'none'; return; }
+    s.classList.add('hover');
+    preview._for = ta;
+    const src = `${state.imageBase}/${encodeURIComponent(name)}`;
+    if (previewImg.getAttribute('src') !== src) previewImg.src = src;
+    preview._rect = s.getBoundingClientRect();
+    preview.style.display = 'block';
+    placePreview();
+  }
+  // Below the tag, or above it when there is no room (again once the picture has loaded and has its size).
+  function placePreview() {
+    const r = preview._rect;
+    if (!r || preview.style.display !== 'block') return;
+    const h = preview.offsetHeight;
+    preview.style.left = Math.max(8, Math.min(r.left, innerWidth - preview.offsetWidth - 8)) + 'px';
+    preview.style.top = (r.bottom + 6 + h < innerHeight ? r.bottom + 6 : Math.max(8, r.top - h - 6)) + 'px';
+  }
+  previewImg.onload = placePreview;
+  window.addEventListener('scroll', () => { preview.style.display = 'none'; }, { passive: true });
+
+  // Colors only (no bold, no sizes): the text behind must wrap exactly like the text in the field.
+  function marked(text) {
+    return text.split('\n').map((line) => {
+      let m;
+      if ((m = line.match(/^(\s*)(#{1,6}\s.*)$/))) return esc(m[1]) + `<span class="mh">${inline(m[2])}</span>`;
+      if ((m = line.match(M.LIST))) {
+        return esc(m[1]) + `<span class="ml">${esc(m[2])}</span>${esc(m[5])}` + (m[6] ? `<span class="mc">${esc(m[6])}</span>` : '') + inline(line.slice(m[0].length));
+      }
+      if ((m = line.match(/^(\s*>)(.*)$/))) return `<span class="mq">${esc(m[1])}</span>` + inline(m[2]);
+      return inline(line);
+    }).join('\n');
+  }
+  function inline(s) {
+    const re = /(`[^`\n]+`)|(\*\*[^*\n]+\*\*)|(\[Image #\d+\])|(https?:\/\/[^\s<>"'`]+[^\s<>"'`.,;:!?)\]])/g;
+    let out = '';
+    let last = 0;
+    let m;
+    while ((m = re.exec(s))) {
+      out += esc(s.slice(last, m.index)) + `<span class="${m[1] ? 'mk' : m[2] ? 'mb' : m[3] ? 'mi' : 'mu'}">${esc(m[0])}</span>`;
+      last = m.index + m[0].length;
+    }
+    return out + esc(s.slice(last));
+  }
+
+  // Typing at the bottom edge: the page follows the caret (the field grew after the browser looked).
+  function revealCaret(ta) {
+    if (document.activeElement !== ta || ta.selectionStart !== ta.selectionEnd) return;
+    const walk = document.createTreeWalker(ta._mirror, NodeFilter.SHOW_TEXT);
+    let left = ta.selectionStart;
+    let n;
+    let rect = null;
+    while ((n = walk.nextNode())) {
+      if (left <= n.length) {
+        // The character before the caret, or after it at the start of a line.
+        const [s, e] = left > 0 && n.data[left - 1] !== '\n' ? [left - 1, left] : [left, Math.min(left + 1, n.length)];
+        const r = document.createRange();
+        r.setStart(n, s);
+        r.setEnd(n, e);
+        rect = r.getBoundingClientRect();
+        break;
+      }
+      left -= n.length;
+    }
+    if (!rect || !rect.height) rect = ta.getBoundingClientRect();
+    const top = (document.querySelector('.top') || { getBoundingClientRect: () => ({ bottom: 0 }) }).getBoundingClientRect().bottom;
+    if (rect.bottom > innerHeight - 8) window.scrollBy(0, rect.bottom - innerHeight + 28);
+    else if (rect.top < top + 4) window.scrollBy(0, rect.top - top - 24);
+  }
+
+  // Puts new text in the field the way typing does (⌘Z undoes it): only the part that changed is replaced.
+  function replaceText(ta, r) {
+    const v = ta.value;
+    const n = r.value;
+    let a = 0;
+    while (a < v.length && a < n.length && v[a] === n[a]) a++;
+    let b = 0;
+    while (b < v.length - a && b < n.length - a && v[v.length - 1 - b] === n[n.length - 1 - b]) b++;
+    if (a !== v.length - b || a !== n.length - b) insertText(ta, n.slice(a, n.length - b), a, v.length - b);
+    ta.setSelectionRange(r.start, r.end);
+  }
+
+  // Lists as in a notes app: Enter goes on with the next bullet or number, Enter on an empty one ends the list, Tab and
+  // Shift+Tab move an item in and out. Shift+Enter is a plain new line. True when the key was used.
+  function listKeys(e) {
+    const ta = e.target;
+    if (e.isComposing || e.metaKey || e.ctrlKey || e.altKey) return false;
+    let r = null;
+    if (e.key === 'Enter' && !e.shiftKey) r = M.listEnter(ta.value, ta.selectionStart, ta.selectionEnd);
+    else if (e.key === 'Tab') r = M.listTab(ta.value, ta.selectionStart, ta.selectionEnd, e.shiftKey);
+    if (!r) return false;
+    e.preventDefault();
+    replaceText(ta, r);
+    return true;
+  }
 
   // One note or prompt. "where" says which buttons it gets.
   function row(it, where, ctx, extra = {}) {
@@ -303,7 +480,8 @@
     const isPrompt = it.kind === 'prompt';
     const st = M.status(it);
     const open = isOpen('item:' + it.id, false);
-    const cls = ['row', it.kind, isPrompt ? st : '', st === 'checked' ? 'checked' : '', it.archived ? 'archived' : ''].filter(Boolean).join(' ');
+    const flash = state.flash && state.flash.id === it.id && state.flash.until > Date.now();
+    const cls = ['row', it.kind, isPrompt ? st : '', st === 'checked' ? 'checked' : '', it.archived ? 'archived' : '', flash ? 'flash' : ''].filter(Boolean).join(' ');
     const [title, desc] = isPrompt ? splitPrompt(it.text) : [String(it.text || '').split('\n')[0], String(it.text || '').split('\n').slice(1).join('\n')];
     // Lines below the first one (for a prompt: its description, without the blank line under the title).
     const lines = isPrompt ? (desc ? desc.split('\n').length : 0) : String(it.text || '').split('\n').length - 1;
@@ -329,35 +507,46 @@
         more ? el(key + ':m', 'span', { class: 'more', text: more }) : null
       ]));
     } else if (isPrompt) {
-      const t = el(key + ':ti', 'textarea', {
-        class: 'title', rows: 1, placeholder: 'Title', spellcheck: false, value: title, 'data-item': it.id,
-        oninput: (e) => { autosize(e.target); change(it.id, { text: joinPrompt(e.target.value.replace(/\n/g, ' '), cache.get(key + ':de') ? cache.get(key + ':de').value : desc) }); },
+      const t = editor(key + ':ti', 'title', {
+        placeholder: 'Title', value: title, 'data-item': it.id,
+        oninput: (e) => { paint(e.target); change(it.id, { text: joinPrompt(e.target.value.replace(/\n/g, ' '), cache.get(key + ':de') ? cache.get(key + ':de').value : desc) }); },
+        // The title a new prompt starts with is selected when you click it, so typing replaces it.
+        onfocus: (e) => { if (e.target.value === M.NEW_TITLE) setTimeout(() => e.target.select(), 0); },
         onkeydown: (e) => { if (e.key === 'Enter') { e.preventDefault(); const d = cache.get(key + ':de'); if (d) { d.focus(); d.setSelectionRange(0, 0); } } },
         onpaste: (e) => onPaste(e, it.id, e.target)
-      });
-      const d = el(key + ':de', 'textarea', {
-        class: 'desc', rows: 1, placeholder: 'What Claude should do', spellcheck: false, value: desc,
-        oninput: (e) => { autosize(e.target); change(it.id, { text: joinPrompt(t.value, e.target.value) }); },
-        onkeydown: (e) => { if (e.key === 'Backspace' && e.target.selectionStart === 0 && e.target.selectionEnd === 0) { e.preventDefault(); t.focus(); t.setSelectionRange(t.value.length, t.value.length); } },
+      }, { marks: 'inline', images });
+      const ti = cache.get(key + ':ti');
+      const d = editor(key + ':de', 'desc', {
+        placeholder: 'What Claude should do', value: desc,
+        oninput: (e) => { paint(e.target); revealCaret(e.target); change(it.id, { text: joinPrompt(ti.value, e.target.value) }); },
+        onkeydown: (e) => {
+          if (listKeys(e)) return;
+          if (e.key === 'Backspace' && e.target.selectionStart === 0 && e.target.selectionEnd === 0) { e.preventDefault(); ti.focus(); ti.setSelectionRange(ti.value.length, ti.value.length); }
+        },
         onpaste: (e) => onPaste(e, it.id, e.target)
-      });
+      }, { marks: 'lines', images });
       body.push(t, d);
     } else {
-      body.push(el(key + ':tx', 'textarea', {
-        class: 'note-text', rows: 1, placeholder: 'Note', spellcheck: false, value: String(it.text || ''), 'data-item': it.id,
-        oninput: (e) => { autosize(e.target); change(it.id, { text: e.target.value }); },
+      body.push(editor(key + ':tx', 'note-text', {
+        placeholder: 'Note', value: String(it.text || ''), 'data-item': it.id,
+        oninput: (e) => { paint(e.target); revealCaret(e.target); change(it.id, { text: e.target.value }); },
+        onkeydown: (e) => { listKeys(e); },
         onpaste: (e) => onPaste(e, it.id, e.target)
-      }));
+      }, { marks: 'lines', images }));
     }
     if (open && images.length) body.push(imageStrip(key, it));
     if (st === 'failed' && it.error) body.push(el(key + ':err', 'div', { class: 'status err', text: it.error }));
+    // The buttons sit on the first line only: the description below gets the whole width.
+    const first = el(key + ':hl', 'div', { class: 'hl' }, [
+      body.shift(),
+      extra.tag ? el(key + ':tag', 'span', { class: 'tag', text: extra.tag, title: extra.tag }) : null,
+      el(key + ':bs', 'div', { class: 'btns' }, buttons(it, where, ctx, key))
+    ]);
     kids.push(el(key + ':b', 'div', {
       class: 'body',
-      onfocusin: () => { if (isPrompt && where.type === 'session' && st === 'todo' && !it.draft) change(it.id, { draft: true }, { now: true }); },
+      onfocusin: (e) => { if (e.target.tagName === 'TEXTAREA' && isPrompt && where.type === 'session' && st === 'todo' && !it.draft) change(it.id, { draft: true }, { now: true }); },
       onfocusout: (e) => { if (!cache.get(key + ':b').contains(e.relatedTarget)) leave(it.id); }
-    }, body));
-    if (extra.tag) kids.push(el(key + ':tag', 'span', { class: 'tag', text: extra.tag, title: extra.tag }));
-    kids.push(el(key + ':bs', 'div', { class: 'btns' }, buttons(it, where, ctx, key)));
+    }, [first, ...body]));
     return el(key, 'div', { class: cls, 'data-id': it.id }, kids);
   }
 
@@ -368,7 +557,8 @@
       if (!it) return;
       const row = document.querySelector(`[data-id="${CSS.escape(id)}"]`);
       if (row && row.contains(document.activeElement)) return;
-      if (!String(it.text || '').trim() && !(it.images || []).some(Boolean)) {
+      const written = it.kind === 'prompt' ? M.hasText(it) : !!String(it.text || '').trim();
+      if (!written && !(it.images || []).some(Boolean)) {
         clearTimeout(saveTimers.get(id));
         local.delete(id);
         post({ t: 'remove', id });
@@ -418,7 +608,8 @@
       ];
     }
     if (it.kind === 'note') return [b('arch', { icon: I.archive, label: 'Archive', fn: () => change(it.id, { archived: true }, { now: true }) }), del];
-    if (where.type !== 'session') return [b('assign', { icon: I.assign, label: 'Assign to…', cls: 'assign', fn: () => post({ t: 'assign', id: it.id }) }), del];
+    const dup = () => b('dup', { icon: I.dup, title: 'Duplicate', fn: () => duplicate(it) });
+    if (where.type !== 'session') return [b('assign', { icon: I.assign, label: 'Assign to…', cls: 'assign', fn: () => post({ t: 'assign', id: it.id }) }), dup(), del];
     const s = ctx.sessionById.get(where.session);
     const terminal = s && (s.origin || 'vscode-terminal') === 'vscode-terminal' && s.shellPid > 0;
     if (st === 'doing') return [b('done', { icon: I.check, label: 'Mark done', fn: () => post({ t: 'markDone', id: it.id }) })];
@@ -437,11 +628,11 @@
       const left = Math.max(1, Math.ceil((it.sending - Date.now()) / 1000));
       return [b('cancel', { icon: I.x, label: `Cancel ${left}s`, cls: 'warn keep', title: 'Sending by itself in a moment: Cancel stops it (and turns auto-send off)', fn: () => post({ t: 'cancel', id: it.id }) }), del];
     }
-    if (!s) return [del];
-    if (st === 'queued') return [b('wait', { icon: I.send, label: 'Sends when free', cls: 'waiting', title: 'Goes in as soon as the session is free. Click to keep it in Todo instead', fn: () => post({ t: 'cancel', id: it.id }) }), del];
+    if (!s) return [dup(), del];
+    if (st === 'queued') return [b('wait', { icon: I.send, label: 'Sends when free', cls: 'waiting', title: 'Goes in as soon as the session is free. Click to keep it in Todo instead', fn: () => post({ t: 'cancel', id: it.id }) }), dup(), del];
     const label = !terminal ? 'Copy' : st === 'failed' ? 'Retry' : M.FREE.includes(s.state) ? 'Send now' : 'Send next';
     const title = !terminal ? 'Copy it, then paste it into the session' : M.FREE.includes(s.state) ? 'Type it into the session now' : 'Goes in as soon as Claude is done';
-    return [b('send', { icon: !terminal ? I.copy : I.send, label, cls: 'primary', title, fn: () => post({ t: 'send', id: it.id }) }), del];
+    return [b('send', { icon: !terminal ? I.copy : I.send, label, cls: 'primary', title, fn: () => post({ t: 'send', id: it.id }) }), dup(), del];
   }
 
   // ---------- sections ----------
@@ -749,15 +940,14 @@
     const page = v.kind === 'session' ? sessionPage(ctx, v) : v.kind === 'folder' ? folderPage(ctx, v) : rootPage(ctx, v);
     setKids(app, [...page, toastEl()]);
     for (const k of [...cache.keys()]) if (!used.has(k)) cache.delete(k);
-    for (const ta of app.querySelectorAll('textarea')) autosize(ta);
   }
 
-  function focusItem(id) {
+  function focusItem(id, which = 'textarea') {
     requestAnimationFrame(() => requestAnimationFrame(() => {
       const r = app.querySelector(`[data-id="${CSS.escape(id)}"]`);
       if (!r) return;
       r.scrollIntoView({ block: 'nearest' });
-      const ta = r.querySelector('textarea');
+      const ta = r.querySelector(which) || r.querySelector('textarea');
       if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
     }));
   }

@@ -85,14 +85,18 @@ notes, and a queue of prompts you write ahead of time. It opens in a tab next to
 
 - **Open it:** double-click a session (the session and its pad), the pad button on a session or folder row (or ⌘Enter,
   or right-click › Open Pad), or the house in the view's title bar for the overview of everything.
-- **A session's pad:** Notes · Doing · Todo · Done, or the same as a board. Write a prompt in place (a title in blue, then
-  what Claude should do). **Send now** types it into the session; while Claude still works it becomes **Send next** and
-  goes in as soon as the turn is over.
+- **A session's pad:** Notes · Doing · Todo · Done, or the same as a board. Write a prompt in place: a new one starts
+  with a title, so you write what Claude should do right away. **Send now** types it into the session; while Claude
+  still works it becomes **Send next** and goes in as soon as the turn is over. The copy button duplicates a prompt.
+- **Lists as in a notes app:** Enter goes on with the next `- ` bullet or `1.` number (the numbers below move on), Enter
+  on an empty item ends the list, Tab and Shift+Tab move an item in and out. List markers, headings, `code`, links and
+  picture tags are colored.
 - **Auto-send:** switch it on and the next prompt in Todo goes in by itself whenever Claude finishes (after a 3-second
   countdown you can cancel), down to the "auto-send stops here" line you can drag. A prompt that didn't arrive, or a turn
   that ended in an error, stops auto-send and stays on top of Todo with the reason.
-- **Paste pictures:** ⌘V puts `[Image #1]` where you are typing; the pictures sit in a closed "▸ 2 images" row below.
-  When the prompt is sent, each tag becomes the picture's path, so Claude opens it.
+- **Paste pictures:** ⌘V puts `[Image #1]` where you are typing (hover it to see the picture, click it to open it); the
+  pictures also sit in a closed "▸ 2 images" row below. When the prompt is sent, each tag becomes the picture's path, so
+  Claude opens it.
 - **Folders and the overview:** a folder's pad has its own notes and prompts (give one to a session with Assign to…, or
   drag it onto the session) and every session in it, opened in place. The overview has general notes, a Backlog to give
   away, the sessions without a folder, and every folder.

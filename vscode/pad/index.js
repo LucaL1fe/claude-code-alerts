@@ -218,6 +218,7 @@ async function sendNow(id) {
   const p = M.parsePlace(it.place);
   const s = p.kind === 'session' ? sessionById(p.id) : null;
   if (!s) return;
+  if (!M.hasText(it)) { panel.post({ t: 'toast', text: 'Write what Claude should do first.' }); return; }
   if (!sendable(s)) {
     await vscode.env.clipboard.writeText(M.promptText(it, (n) => store.imagePath(n)));
     store.put(id, { status: 'done', doneAt: Date.now(), sentAt: Date.now() });

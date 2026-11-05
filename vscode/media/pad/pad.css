@@ -109,14 +109,40 @@ svg { flex-shrink: 0; }
 .check { width: 22px; height: 20px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .check input { margin: 0; accent-color: var(--notes); }
 .body { flex: 1; min-width: 0; font-family: var(--mono); font-size: 12.5px; line-height: 20px; padding-left: 6px; }
+/* The first line: title (or the folded line) and the buttons. Below it the text has the whole width. */
+.hl { display: flex; align-items: flex-start; min-width: 0; }
+.hl > .ed, .hl > .line { flex: 1; min-width: 0; }
+.row .btns { font-family: var(--vscode-font-family); line-height: normal; margin-top: -1px; margin-bottom: -1px; }
 .line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: text; min-height: 20px; }
 .line .t { color: var(--title); font-weight: 600; }
 .line .more { font-family: var(--vscode-font-family); font-size: 11.5px; color: var(--muted); margin-left: 8px; }
 .line .placeholder, textarea::placeholder { color: color-mix(in srgb, var(--fg) 35%, var(--bg)); font-weight: 400; }
 .row.note.checked .line { text-decoration: line-through; color: var(--muted); }
-textarea { display: block; width: 100%; resize: none; overflow: hidden; border: 0; outline: 0; padding: 0; margin: 0; background: transparent;
-  color: var(--fg); font-family: var(--mono); font-size: 12.5px; line-height: 20px; }
-textarea.title { color: var(--title); font-weight: 600; }
+/* A text field over a copy of its text (the mirror): the copy sets the height and shows the colors, the field shows the
+   caret and the selection. Both lay out the text the same way, so they share every font and wrapping property. */
+.ed { position: relative; }
+.ed .mirror, .ed textarea { display: block; width: 100%; margin: 0; padding: 0; border: 0; font-family: var(--mono); font-size: 12.5px; line-height: 20px;
+  font-weight: 400; letter-spacing: normal; white-space: pre-wrap; overflow-wrap: break-word; word-break: normal; tab-size: 4; }
+.ed .mirror { min-height: 20px; color: var(--fg); pointer-events: none; }
+.ed textarea { position: absolute; inset: 0; height: 100%; resize: none; overflow: hidden; outline: 0; background: transparent; color: transparent; caret-color: var(--fg); }
+.ed textarea::selection { background: color-mix(in srgb, var(--title) 38%, transparent); }
+.ed.title .mirror, .ed.title textarea { font-weight: 600; }
+.ed.title .mirror { color: var(--title); }
+.row.note.checked .mirror { color: var(--muted); text-decoration: line-through; }
+.mirror .ph { visibility: hidden; }
+.mirror .ml, .mirror .mh { color: var(--title); }
+.mirror .mc { color: var(--notes); }
+.mirror .mq { color: var(--muted); }
+.mirror .mb { color: color-mix(in srgb, var(--notes) 45%, var(--fg)); }
+.mirror .mk { color: #ce9178; background: color-mix(in srgb, var(--fg) 8%, transparent); border-radius: 3px; }
+.mirror .mi { color: var(--todo); background: color-mix(in srgb, var(--todo) 16%, transparent); border-radius: 3px; }
+.mirror .mu { color: var(--vscode-textLink-foreground, #4daafc); text-decoration: underline; text-underline-offset: 2px; }
+body.vscode-light .mirror .mk { color: #a31515; }
+.mirror .mi.hover { text-decoration: underline; text-underline-offset: 2px; }
+/* A picture tag's picture, while the mouse is on the tag */
+.preview { position: fixed; z-index: 20; display: none; padding: 3px; border-radius: 4px; pointer-events: none;
+  background: var(--vscode-editorHoverWidget-background, #252526); border: 1px solid var(--vscode-editorHoverWidget-border, var(--line)); box-shadow: 0 4px 14px rgba(0,0,0,.4); }
+.preview img { display: block; max-width: min(320px, calc(100vw - 30px)); max-height: 220px; border-radius: 2px; }
 .status { font-family: var(--vscode-font-family); font-size: 11.5px; color: var(--muted); margin-top: 2px; }
 .status.err { color: color-mix(in srgb, var(--deleted) 80%, var(--fg)); }
 .tag { display: inline-flex; align-items: center; gap: 4px; height: 18px; max-width: 220px; padding: 0 7px; margin-left: 8px; border-radius: 9px; flex-shrink: 0;

@@ -28,16 +28,141 @@
   const description = (item) => String(item.text || '').split('\n').slice(1).join('\n').replace(/^\n+/, '');
   const status = (item) => item.status || (item.kind === 'prompt' ? 'todo' : 'open');
 
+  // A new prompt starts with this title, so you can write what Claude should do right away. It names the prompt in
+  // the pad only: it is not sent.
+  const NEW_TITLE = 'New prompt';
+
   // The text that goes into the session: [Image #n] becomes the picture's full path (Claude opens it from there), and
   // control characters go (an Esc would act as a key in Claude Code).
   function promptText(item, imagePath) {
     const images = item.images || [];
-    return String(item.text || '')
+    const raw = String(item.text || '');
+    const tagged = new Set([...raw.matchAll(/\[Image #(\d+)\]/g)].map((m) => +m[1]));
+    const text = raw
       .replace(/\[Image #(\d+)\]/g, (m, n) => (images[n - 1] ? imagePath(images[n - 1]) : ''))
       .replace(/\r\n?/g, '\n')
       .replace(/[\x00-\x08\x0B-\x1F\x7F]/g, '')
       .replace(/[ \t]+$/gm, '')
       .replace(/^\n+|\s+$/g, '');
+    const [first, ...rest] = text.split('\n');
+    const out = item.kind === 'prompt' && first.trim() === NEW_TITLE ? rest.join('\n').replace(/^\n+/, '') : text;
+    // A picture without its tag in the text (0.7.0 lost the tag when pasting in VS Code) still goes, at the end.
+    const loose = images.map((n, i) => (n && !tagged.has(i + 1) ? imagePath(n) : null)).filter(Boolean);
+    return loose.length ? (out ? out + '\n\n' : '') + loose.join(' ') : out;
+  }
+  const hasText = (item) => !!promptText(item, (n) => n).trim();
+
+  // ---------- lists in a description or a note ----------
+  // A list item: "- ", "* ", "+ ", "• ", "1. " or "1) " at the start of a line (after its indent), maybe a "[ ] " box.
+  // Groups: 1 indent, 2 marker, 3 number, 4 "." or ")", 5 the space after it, 6 the box.
+  const LIST = /^([ \t]*)([-*+•]|(\d{1,4})([.)]))([ \t]+)(\[[ xX]\][ \t]+)?/;
+
+  // Where the line around position i starts and ends.
+  function lineAt(v, i) {
+    const s = v.lastIndexOf('\n', i - 1) + 1;
+    const e = v.indexOf('\n', i);
+    return [s, e < 0 ? v.length : e];
+  }
+  const indentOf = (line) => line.match(/^[ \t]*/)[0].length;
+
+  // The number a numbered item at this indent gets when it sits below line `ls`: one more than the item before it on
+  // the same level (deeper lines in between are skipped), else 1.
+  function nextNumber(v, ls, indent) {
+    let s = ls;
+    while (s > 0) {
+      const [ps] = lineAt(v, s - 1);
+      const l = v.slice(ps, s - 1);
+      s = ps;
+      if (!l.trim()) break;
+      const li = indentOf(l);
+      if (li > indent) continue;
+      const m = l.match(LIST);
+      return li === indent && m && m[3] ? +m[3] + 1 : 1;
+    }
+    return 1;
+  }
+
+  // The numbers of the items right below line end `le` on this level, counted on from n (stops at a blank line, a
+  // line that is not an item, or a level further out).
+  function renumber(v, le, indent, delim, n) {
+    let pos = le;
+    let out = '';
+    while (pos < v.length) {
+      const [s, e] = lineAt(v, pos + 1);
+      const l = v.slice(s, e);
+      if (!l.trim()) break;
+      const li = indentOf(l);
+      const m = l.match(LIST);
+      if (li > indent) { out += '\n' + l; pos = e; continue; }
+      if (li < indent || !m || !m[3] || m[4] !== delim) break;
+      out += '\n' + m[1] + n + l.slice(m[1].length + m[3].length);
+      n += 1;
+      pos = e;
+    }
+    return { out, end: pos };
+  }
+
+  // Enter in a list, as in a notes app: the new line starts with the next bullet or number (and the numbers below move
+  // on by one). Enter on an empty item moves it out a level, or ends the list. Null: a plain Enter.
+  function listEnter(v, start, end) {
+    if (start !== end) return null;
+    const [ls, le] = lineAt(v, start);
+    const line = v.slice(ls, le);
+    const m = line.match(LIST);
+    if (!m || start < ls + m[0].length) return null;
+    if (!line.slice(m[0].length).trim() && start === le) {
+      if (m[1].length) return listTab(v, start, end, true);
+      return { value: v.slice(0, ls) + v.slice(le), start: ls, end: ls };
+    }
+    const marker = m[3] ? `${+m[3] + 1}${m[4]}` : m[2];
+    const insert = '\n' + m[1] + marker + m[5] + (m[6] ? '[ ] ' : '');
+    const after = m[3] ? renumber(v, le, m[1].length, m[4], +m[3] + 2) : { out: '', end: le };
+    const value = v.slice(0, start) + insert + v.slice(start, le) + after.out + v.slice(after.end);
+    return { value, start: start + insert.length, end: start + insert.length };
+  }
+
+  // Tab and Shift+Tab on list lines: in or out one level (in: by the width of the item above's marker, else 2 spaces;
+  // out: to the level above). A numbered item takes the number that follows on its new level. Null: not a list line.
+  function listTab(v, start, end, back) {
+    const [ls] = lineAt(v, start);
+    const [, le] = lineAt(v, end > start && v[end - 1] === '\n' ? end - 1 : end);
+    const lines = v.slice(ls, le).split('\n');
+    const m = lines[0].match(LIST);
+    if (!m) return null;
+    const indent = m[1].length;
+    let to;
+    if (back) {
+      to = 0;
+      let s = ls;
+      while (s > 0) {
+        const [ps] = lineAt(v, s - 1);
+        const l = v.slice(ps, s - 1);
+        s = ps;
+        if (l.trim() && LIST.test(l) && indentOf(l) < indent) { to = indentOf(l); break; }
+      }
+      if (to === indent) return { value: v, start, end };
+    } else {
+      const [ps] = ls > 0 ? lineAt(v, ls - 1) : [0];
+      const above = ls > 0 ? v.slice(ps, ls - 1).match(LIST) : null;
+      const ai = above ? above[1].length : -1;
+      to = ai > indent ? ai : ai === indent ? indent + above[2].length + above[5].length : indent + 2;
+    }
+    const shift = to - indent;
+    const moved = lines.map((l, i) => {
+      if (!l.trim()) return l;
+      const li = indentOf(l);
+      const next = ' '.repeat(Math.max(0, li + shift)) + l.slice(li);
+      if (i > 0 || !m[3]) return next;
+      const mm = next.match(LIST);
+      return mm[1] + nextNumber(v, ls, mm[1].length) + next.slice(mm[1].length + mm[3].length);
+    });
+    const text = moved.join('\n');
+    const value = v.slice(0, ls) + text + v.slice(le);
+    const first = moved[0].length - lines[0].length;
+    const all = text.length - (le - ls);
+    // Selected whole lines stay selected; a caret moves with its text.
+    const keepStart = end > start && start === ls;
+    return { value, start: keepStart ? ls : Math.max(ls, start + first), end: Math.max(ls, end + (end > start ? all : first)) };
   }
 
   // Lines as they are typed into Claude Code: each line on its own, joined by Claude Code's newline (a backslash, then
@@ -241,7 +366,7 @@
       return null;
     }
     if (!FREE.includes(s.state)) return null;
-    const waiting = prompts.filter((i) => !i.draft && title(i).trim()).sort(byOrder);
+    const waiting = prompts.filter((i) => !i.draft && hasText(i)).sort(byOrder);
     const queued = waiting.find((i) => status(i) === 'queued');
     if (queued) return { type: 'send', id: queued.id };
     if (!settings || !settings.autoSend || s.state === 'error') return null;
@@ -254,7 +379,8 @@
   function waiting(ctx, place) { return sections(ctx, place).todo; }
 
   return {
-    FREE, SIGNAL, URGENCY, GONE_AFTER, between, byOrder, title, description, status, promptText, typedLines, context,
+    FREE, SIGNAL, URGENCY, GONE_AFTER, NEW_TITLE, LIST, between, byOrder, title, description, status, promptText, hasText,
+    listEnter, listTab, typedLines, context,
     placeOf, parsePlace, nextKnown, homeOf, nameOf, sections, sessionView, folderView, rootView, folderSummary,
     sessionSummary, deleted, view, decide, waiting, isGone
   };
