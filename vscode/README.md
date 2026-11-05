@@ -15,6 +15,9 @@ Companion extension of the [Claude Code Alerts](https://github.com/LucaL1fe/clau
   (`claude --resume <id>`) with its name and folder. Setting `claudeCodeAlerts.restoreSessions`.
 - **Close Session** (the trash on a session row, or right-click): closes its terminal tab, which ends Claude. While
   Claude is still working it asks first.
+- **The view follows your tabs:** the session whose tab you are in is highlighted, however you got there (tab bar, a
+  notification, the menu bar); a closed folder opens to show it. Every session open in a tab has an eye 👁 (with split
+  editors, several at once).
 - Status bar item with the number of sessions waiting for you.
 - Renames the terminal tab when you rename a session in the app or ask Claude to.
 

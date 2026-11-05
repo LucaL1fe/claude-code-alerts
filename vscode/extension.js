@@ -140,6 +140,7 @@ async function onMessage(m) {
     tree.refresh();
     decorations.refresh();
     updateStatus();
+    syncViewSoon();
     // A session started or ended somewhere: maybe in one of our tabs.
     const key = sessions.map((s) => s.id + ':' + s.shellPid).sort().join(',');
     if (key !== sessionsKey) { sessionsKey = key; saveSoon(); }
@@ -228,7 +229,7 @@ class SessionTree {
 const tree = new SessionTree();
 
 // Colors names like the Explorer colors changed files: a session that needs you, and every folder it is in
-// (with a dot), so a collapsed folder still shows that something inside waits.
+// (with a dot), so a collapsed folder still shows that something inside waits. A session open in a tab gets an eye.
 const decorations = {
   emitter: new vscode.EventEmitter(),
   get onDidChangeFileDecorations() { return this.emitter.event; },
@@ -241,10 +242,56 @@ const decorations = {
     const isFolder = key.startsWith('f:');
     const s = isFolder ? null : sessionById.get(key.slice(2));
     const state = isFolder ? folderSignal.get(key.slice(2)) : s && SIGNAL.includes(s.state) ? s.state : null;
-    if (!state) return undefined;
-    return new vscode.FileDecoration(isFolder ? '●' : undefined, LABEL[state], new vscode.ThemeColor(COLOR[state]));
+    const open = !isFolder && openKeys.has(key);
+    if (!state && !open) return undefined;
+    const tip = [open && 'open in a tab', state && LABEL[state]].filter(Boolean).join(' · ');
+    return new vscode.FileDecoration(isFolder ? '●' : open ? '👁' : undefined, tip, state ? new vscode.ThemeColor(COLOR[state]) : undefined);
   }
 };
+
+// What you see follows the tabs, however you got there (tab bar, a notification, the menu bar, Ctrl+Tab): the session
+// whose tab you are in gets the row highlight, like the Explorer highlights the open file (a closed folder opens to show
+// it), and every session open in a tab group gets an eye. In a file tab the highlight stays on the last session.
+let openKeys = new Set();
+let hereKey = null;
+let viewTimer = null;
+
+// At most every 120 ms: a working session's spinner changes its tab title all the time.
+function syncViewSoon() {
+  if (viewTimer) return;
+  viewTimer = setTimeout(() => { viewTimer = null; syncView(); }, 120);
+}
+
+async function syncView() {
+  const keyByPid = new Map(sessions.filter((s) => s.shellPid > 0).map((s) => [s.shellPid, 's:' + s.id]));
+  const keyOf = async (t) => (t ? keyByPid.get(await pidOf(t)) : undefined);
+  // An editor tab is labeled with its terminal's name.
+  const inTabs = new Set();
+  const shown = [];
+  for (const g of vscode.window.tabGroups.all) {
+    for (const tab of g.tabs) {
+      if (!(tab.input instanceof vscode.TabInputTerminal)) continue;
+      const t = vscode.window.terminals.find((x) => !inTabs.has(x) && x.name === tab.label);
+      if (!t) continue;
+      inTabs.add(t);
+      if (tab.isActive) shown.push(t);
+    }
+  }
+  const active = vscode.window.activeTerminal;
+  // The panel terminal you are in counts as open too.
+  if (active && !inTabs.has(active)) shown.push(active);
+  const keys = new Set((await Promise.all(shown.map(keyOf))).filter(Boolean));
+  if ([...keys].sort().join() !== [...openKeys].sort().join()) {
+    openKeys = keys;
+    decorations.refresh();
+  }
+  // Only when you move to another session: a row you click to rename or move keeps its highlight.
+  const here = await keyOf(active);
+  if (!here || here === hereKey || !treeView.visible) return;
+  hereKey = here;
+  if (treeView.selection.includes(here)) return;
+  try { await treeView.reveal(here, { select: true, focus: false }); } catch (e) { /* the row is gone */ }
+}
 
 // Drag sessions and folders: onto a folder = into it, onto a session = into that session's folder, onto empty space =
 // top level.
@@ -749,15 +796,20 @@ function activate(context) {
     vscode.commands.registerCommand('claudeCodeAlerts.moveDown', (key) => shiftFolder(key, 'down')),
     vscode.workspace.onDidChangeConfiguration((e) => { if (e.affectsConfiguration('claudeCodeAlerts.foldersPosition')) tree.refresh(); }),
     vscode.commands.registerCommand('claudeCodeAlerts.settings', () => execFile(CCA, ['settings'], () => {})),
-    vscode.window.onDidOpenTerminal(() => { reportSoon(); saveSoon(); }),
+    vscode.window.onDidOpenTerminal(() => { reportSoon(); saveSoon(); syncViewSoon(); }),
     vscode.window.onDidCloseTerminal(async (t) => {
       reportSoon();
+      syncViewSoon();
       // Closed by VS Code quitting or reloading: what was open stays saved for next time.
       if (t.exitStatus && t.exitStatus.reason === vscode.TerminalExitReason.Shutdown) { closing = true; return; }
       held.delete(await pidOf(t));
       saveSoon();
     }),
-    vscode.window.onDidChangeActiveTerminal(reportSoon),
+    vscode.window.onDidChangeActiveTerminal(() => { reportSoon(); syncViewSoon(); }),
+    vscode.window.tabGroups.onDidChangeTabs(syncViewSoon),
+    vscode.window.tabGroups.onDidChangeTabGroups(syncViewSoon),
+    // Opened again: the highlight catches up with the tab you are in.
+    treeView.onDidChangeVisibility((e) => { if (e.visible) { hereKey = null; syncViewSoon(); } }),
     vscode.window.onDidChangeWindowState(reportSoon),
     vscode.workspace.onDidChangeWorkspaceFolders(reportSoon),
     vscode.window.registerUriHandler({

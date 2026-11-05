@@ -54,7 +54,8 @@ at it, it goes back to Claude's own title.
 ### Every session at a glance
 
 The **Claude Sessions** view in VS Code's Explorer lists every running Claude session with its live state and what it
-is doing. Click one and you are in its terminal. The status bar shows how many are waiting.
+is doing. Click one and you are in its terminal. The view follows your tabs: the session you are in is highlighted
+however you got there, and every session open in a tab has an eye 👁. The status bar shows how many are waiting.
 
 Start a new session with + in the view's title bar, or right-click a folder or session for New Session and New Folder:
 it opens a terminal tab that runs `claude` and lands in that folder. Sort sessions into your own folders, like files in
