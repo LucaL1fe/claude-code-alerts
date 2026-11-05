@@ -405,8 +405,9 @@ final class Store: ObservableObject {
     static let continueText = "The usage limit has reset (Claude Code Alerts typed this). Continue the task you were working on "
         + "when the limit was reached; don't repeat work that is already done."
 
-    /// The session stopped at the usage limit. With a known reset and a VS Code tab to type into, it waits (ring dot, the
-    /// time in its row) and continues by itself; otherwise you get an alert now and another one once the limit resets.
+    /// The session stopped at the usage limit. With a known reset and a VS Code tab to type into, it waits (half-filled
+    /// dot, the time in its row) and continues by itself; otherwise you get an alert now and another one once the limit
+    /// resets.
     private func pauseForLimit(_ id: String, _ windows: [LimitWindow]) {
         mergeLimits(windows, live: false)
         guard var s = sessions[id] else { return }

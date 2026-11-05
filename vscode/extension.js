@@ -217,11 +217,12 @@ class SessionTree {
     item.resourceUri = keyUri(key);
     item.description = `${LABEL[s.state] || s.state} · ${ago(s.updated)}${s.detail ? ' · ' + s.detail : ''}`;
     // Colored dots are files, so a selected row keeps its state color (VS Code paints selected theme icons white).
-    // Only the grey idle dot is a theme icon and turns white when you select it.
-    item.iconPath = s.state === 'idle' || !extUri
+    // Only the grey idle dot is a theme icon and turns white when you select it. Open in a tab: a ring around the dot.
+    const open = openKeys.has(key);
+    item.iconPath = (s.state === 'idle' && !open) || !extUri
       ? new vscode.ThemeIcon('circle-filled', new vscode.ThemeColor(COLOR.idle))
-      : vscode.Uri.joinPath(extUri, 'media', `dot-${s.state}.svg`);
-    item.tooltip = `${s.name}\n${LABEL[s.state] || s.state}\n${s.detail || ''}`;
+      : vscode.Uri.joinPath(extUri, 'media', `dot-${s.state}${open ? '-open' : ''}.svg`);
+    item.tooltip = `${s.name}\n${LABEL[s.state] || s.state}${open ? ' · open in a tab' : ''}\n${s.detail || ''}`;
     item.command = { command: 'claudeCodeAlerts.goto', title: 'Go to session', arguments: [key] };
     return item;
   }
@@ -229,7 +230,7 @@ class SessionTree {
 const tree = new SessionTree();
 
 // Colors names like the Explorer colors changed files: a session that needs you, and every folder it is in
-// (with a dot), so a collapsed folder still shows that something inside waits. A session open in a tab gets an eye.
+// (with a dot), so a collapsed folder still shows that something inside waits.
 const decorations = {
   emitter: new vscode.EventEmitter(),
   get onDidChangeFileDecorations() { return this.emitter.event; },
@@ -242,16 +243,15 @@ const decorations = {
     const isFolder = key.startsWith('f:');
     const s = isFolder ? null : sessionById.get(key.slice(2));
     const state = isFolder ? folderSignal.get(key.slice(2)) : s && SIGNAL.includes(s.state) ? s.state : null;
-    const open = !isFolder && openKeys.has(key);
-    if (!state && !open) return undefined;
-    const tip = [open && 'open in a tab', state && LABEL[state]].filter(Boolean).join(' · ');
-    return new vscode.FileDecoration(isFolder ? '●' : open ? '👁' : undefined, tip, state ? new vscode.ThemeColor(COLOR[state]) : undefined);
+    if (!state) return undefined;
+    return new vscode.FileDecoration(isFolder ? '●' : undefined, LABEL[state], new vscode.ThemeColor(COLOR[state]));
   }
 };
 
 // What you see follows the tabs, however you got there (tab bar, a notification, the menu bar, Ctrl+Tab): the session
 // whose tab you are in gets the row highlight, like the Explorer highlights the open file (a closed folder opens to show
-// it), and every session open in a tab group gets an eye. In a file tab the highlight stays on the last session.
+// it), and every session open in a tab group gets a ring around its dot. In a file tab the highlight stays on the last
+// session.
 let openKeys = new Set();
 let hereKey = null;
 let viewTimer = null;
@@ -281,10 +281,9 @@ async function syncView() {
   // The panel terminal you are in counts as open too.
   if (active && !inTabs.has(active)) shown.push(active);
   const keys = new Set((await Promise.all(shown.map(keyOf))).filter(Boolean));
-  if ([...keys].sort().join() !== [...openKeys].sort().join()) {
-    openKeys = keys;
-    decorations.refresh();
-  }
+  const changed = [...keys, ...openKeys].filter((k) => keys.has(k) !== openKeys.has(k) && sessionById.has(k.slice(2)));
+  openKeys = keys;
+  if (changed.length) tree.emitter.fire(changed);
   // Only when you move to another session: a row you click to rename or move keeps its highlight.
   const here = await keyOf(active);
   if (!here || here === hereKey || !treeView.visible) return;

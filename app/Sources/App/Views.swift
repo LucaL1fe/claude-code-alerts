@@ -11,14 +11,18 @@ struct MakeKeyWindow: NSViewRepresentable {
     }
 }
 
-/// A session's dot: filled, or a ring while Claude waits for background work.
+/// A session's dot: filled, or half filled while Claude goes on by itself (background work, the usage limit).
 struct StateDot: View {
     let state: AState
     var size: CGFloat = 8
 
     var body: some View {
         if state == .background {
-            Circle().strokeBorder(state.color, lineWidth: max(1.5, size * 0.22)).frame(width: size, height: size)
+            ZStack {
+                Circle().strokeBorder(state.color, lineWidth: max(1.1, size * 0.14))
+                Circle().fill(state.color).mask(HStack(spacing: 0) { Rectangle(); Color.clear })
+            }
+            .frame(width: size, height: size)
         } else {
             Circle().fill(state.color).frame(width: size, height: size)
         }

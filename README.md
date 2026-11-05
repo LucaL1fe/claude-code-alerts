@@ -55,7 +55,8 @@ at it, it goes back to Claude's own title.
 
 The **Claude Sessions** view in VS Code's Explorer lists every running Claude session with its live state and what it
 is doing. Click one and you are in its terminal. The view follows your tabs: the session you are in is highlighted
-however you got there, and every session open in a tab has an eye 👁. The status bar shows how many are waiting.
+however you got there, and every session open in a tab has a ring around its dot. The status bar shows how many are
+waiting.
 
 Start a new session with + in the view's title bar, or right-click a folder or session for New Session and New Folder:
 it opens a terminal tab that runs `claude` and lands in that folder. Sort sessions into your own folders, like files in
@@ -79,7 +80,7 @@ yourself stay ended. Turn it off with `claudeCodeAlerts.restoreSessions`; what i
 
 ### Hit the usage limit? It continues by itself
 
-When a session stops at your 5-hour or weekly usage limit, it waits with a ring dot and the time it goes on
+When a session stops at your 5-hour or weekly usage limit, it waits with a half-filled dot and the time it goes on
 (`Usage limit · continues at 04:02`). A moment after the limit resets, Claude Code Alerts types a short continue message
 into its VS Code terminal tab, so a long job keeps running overnight instead of waiting for you until morning.
 
