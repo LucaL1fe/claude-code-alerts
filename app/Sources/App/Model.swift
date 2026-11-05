@@ -89,6 +89,9 @@ struct Session: Codable, Identifiable, Equatable {
     /// that stops again at the same reset is not continued twice).
     var continuedAt: Date? = nil
     var continuedReset: Double? = nil
+    /// When its last turn ended, and how: done, error or limit.
+    var ended: Date? = nil
+    var outcome: String? = nil
 
     /// Your last interaction with the session, for the list order.
     var touched: Date { lastPrompt ?? started ?? .distantPast }
@@ -104,7 +107,7 @@ struct Session: Codable, Identifiable, Equatable {
 
     enum CodingKeys: String, CodingKey {
         case id, autoName, customName, claudePid, shellPid, tty, cwd, transcript, state, detail, updated, notifyPending, origin, started, lastPrompt
-        case scheduledTask, unattended, limit, continuedAt, continuedReset
+        case scheduledTask, unattended, limit, continuedAt, continuedReset, ended, outcome
     }
 
     init(id: String, autoName: String, customName: String?, claudePid: Int32, shellPid: Int32, tty: String?, cwd: String,
@@ -136,6 +139,8 @@ struct Session: Codable, Identifiable, Equatable {
         limit = try c.decodeIfPresent(LimitPause.self, forKey: .limit)
         continuedAt = try c.decodeIfPresent(Date.self, forKey: .continuedAt)
         continuedReset = try c.decodeIfPresent(Double.self, forKey: .continuedReset)
+        ended = try c.decodeIfPresent(Date.self, forKey: .ended)
+        outcome = try c.decodeIfPresent(String.self, forKey: .outcome)
     }
 }
 
@@ -156,6 +161,8 @@ struct Place: Codable, Equatable {
     var used: Date
     var name: String? = nil
     var touched: Date? = nil
+    /// The session before it in the same terminal (/clear), whose place it took over.
+    var prev: String? = nil
 }
 
 enum AlertStatus: String, Codable {

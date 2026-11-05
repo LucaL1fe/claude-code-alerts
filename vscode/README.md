@@ -19,6 +19,11 @@ Companion extension of the [Claude Code Alerts](https://github.com/LucaL1fe/clau
   notification, the menu bar); a closed folder opens to show it. Every session open in a tab has a ring around its
   dot (with split editors, several at once). A half-filled dot means Claude goes on by itself (background tasks, or
   waiting for the usage limit to reset).
+- **Prompt pad** (double-click a session, the pad button on a row, ⌘Enter, or the house in the title bar): notes and a
+  queue of prompts for each session, each folder and the top level, in a tab next to the session. Send now, send next
+  (when the turn is over) or auto-send down to a line you drag; paste pictures as `[Image #n]`; drag anything anywhere;
+  a board view; closed sessions and deleted folders leave their notes and prompts in Deleted. Files in
+  `~/.claude-code-alerts/pad`.
 - Status bar item with the number of sessions waiting for you.
 - Renames the terminal tab when you rename a session in the app or ask Claude to.
 

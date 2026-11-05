@@ -355,6 +355,7 @@ final class Store: ObservableObject {
             if msg.toolName?.hasPrefix("mcp__computer-use__") == true { macUsed(id) }
         case "Stop" where msg.limitStop == true, "StopFailure" where msg.limitStop == true:
             if macSessionId == id { endMac(showFree: true) }
+            ended(id, "limit")
             pauseForLimit(id, msg.limits ?? [])
         case "Stop":
             if macSessionId == id { endMac(showFree: true) }
@@ -363,10 +364,12 @@ final class Store: ObservableObject {
                 let what = msg.toolName.map { ": \($0)" } ?? ""
                 setState(id, .background, "Waiting for \(n) background task\(n == 1 ? "" : "s")\(what)")
             } else {
+                ended(id, "done")
                 raise(id, .done, msg.text?.isEmpty == false ? msg.text! : "Finished", source: event)
             }
         case "StopFailure":
             if macSessionId == id { endMac(showFree: true) }
+            ended(id, "error")
             raise(id, .error, msg.text ?? "Stopped with an error", source: event)
         case "Notification":
             let type = msg.notificationType ?? ""
@@ -395,6 +398,12 @@ final class Store: ObservableObject {
             break
         }
         changed()
+    }
+
+    /// A turn is over (not one that waits for background work: that one ends later).
+    private func ended(_ id: String, _ outcome: String) {
+        sessions[id]?.ended = Date()
+        sessions[id]?.outcome = outcome
     }
 
     // MARK: - Usage limit
@@ -894,7 +903,7 @@ final class Store: ObservableObject {
         sortedSessions.map {
             SessionInfo(id: $0.id, name: $0.name, state: $0.state.rawValue, detail: $0.detail, shellPid: $0.shellPid,
                         updated: $0.updated.timeIntervalSince1970, folder: folderOf($0.id), touched: $0.touched.timeIntervalSince1970,
-                        origin: $0.origin)
+                        origin: $0.origin, ended: $0.ended?.timeIntervalSince1970, outcome: $0.outcome, prev: places[$0.id]?.prev)
         }
     }
 
@@ -902,6 +911,8 @@ final class Store: ObservableObject {
         var m = Msg(kind: "sessions")
         m.sessions = sessionInfos()
         m.folders = visibleFolders
+        m.demo = demoMode
+        m.features = ["folderId"]
         return m
     }
 
@@ -931,7 +942,7 @@ final class Store: ObservableObject {
         if s.shellPid > 0, let e = expected.removeValue(forKey: s.shellPid), Date().timeIntervalSince(e.at) < 600 {
             places[id] = Place(folder: e.folder, used: Date(), touched: s.touched)
         } else {
-            places[id] = Place(folder: prior.flatMap { places[$0]?.folder }, used: Date(), touched: s.touched)
+            places[id] = Place(folder: prior.flatMap { places[$0]?.folder }, used: Date(), touched: s.touched, prev: prior)
         }
     }
 
@@ -974,9 +985,10 @@ final class Store: ObservableObject {
 
     /// A new folder (in `parent`, nil = top level); returns its id.
     @discardableResult
-    func createFolder(_ name: String, in parent: String?) -> String {
+    func createFolder(_ name: String, in parent: String?, id given: String? = nil) -> String {
         let parent = parent.flatMap { folders[$0] != nil ? $0 : nil }
-        let id = UUID().uuidString.lowercased()
+        let id = given.flatMap { UUID(uuidString: $0) != nil && folders[$0.lowercased()] == nil ? $0.lowercased() : nil }
+            ?? UUID().uuidString.lowercased()
         folders[id] = FolderInfo(id: id, name: name, parent: parent, order: firstOrder(parent), demo: demoMode ? true : nil)
         changed()
         return id
@@ -1022,7 +1034,8 @@ final class Store: ObservableObject {
         case "create":
             let name = (msg.name ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             guard !name.isEmpty else { return }
-            createFolder(name, in: msg.folder)
+            // A given id brings a deleted folder back as itself (the prompt pad's Restore): its notes and prompts reappear.
+            createFolder(name, in: msg.folder, id: msg.ids?.first)
             return
         case "rename":
             let name = (msg.name ?? "").trimmingCharacters(in: .whitespacesAndNewlines)

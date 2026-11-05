@@ -43,9 +43,16 @@ public struct SessionInfo: Codable, Equatable {
     public var touched: Double
     /// Where it runs: vscode-terminal, vscode-panel, terminal[:bundle id], desktop, background (nil = vscode-terminal).
     public var origin: String?
+    /// When its last turn ended (unix seconds) and how: done, error, or limit (stopped at the usage limit). The prompt
+    /// pad tells from these when a prompt it sent is finished, even if a quick done → idle went by unseen.
+    public var ended: Double?
+    public var outcome: String?
+    /// The session that ran before it in the same terminal (/clear starts a new one): its prompt pad carries over.
+    public var prev: String?
 
     public init(id: String, name: String, state: String, detail: String, shellPid: Int32, updated: Double,
-                folder: String? = nil, touched: Double = 0, origin: String? = nil) {
+                folder: String? = nil, touched: Double = 0, origin: String? = nil, ended: Double? = nil,
+                outcome: String? = nil, prev: String? = nil) {
         self.id = id
         self.name = name
         self.state = state
@@ -55,6 +62,9 @@ public struct SessionInfo: Codable, Equatable {
         self.folder = folder
         self.touched = touched
         self.origin = origin
+        self.ended = ended
+        self.outcome = outcome
+        self.prev = prev
     }
 }
 
@@ -128,6 +138,10 @@ public struct Msg: Codable {
     public var limitStop: Bool?
     public var limits: [LimitWindow]?
     public var ok: Bool?
+    /// The sessions message: demo mode is on (the extension then treats missing sessions as hidden, not deleted), and
+    /// what this app can do (e.g. "folderId": a folder can be created with a given id, to restore a deleted one).
+    public var demo: Bool?
+    public var features: [String]?
 
     public init(kind: String) { self.kind = kind }
 }

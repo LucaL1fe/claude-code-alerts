@@ -1,8 +1,8 @@
 {
   "name": "claude-code-alerts",
   "displayName": "Claude Code Alerts: notifications for Claude Code terminals",
-  "description": "Know which Claude Code session is done or needs you, and jump to the exact VS Code terminal tab. Companion of the Claude Code Alerts Mac app.",
-  "version": "0.6.4",
+  "description": "Know which Claude Code session is done or needs you, and jump to the exact VS Code terminal tab. A prompt pad per session and folder: notes, a prompt queue, send with a click or by itself. Companion of the Claude Code Alerts Mac app.",
+  "version": "0.7.0",
   "publisher": "lucal1fe",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -35,7 +35,8 @@
     "ui"
   ],
   "activationEvents": [
-    "onStartupFinished"
+    "onStartupFinished",
+    "onWebviewPanel:claudeCodeAlerts.pad"
   ],
   "main": "./extension.js",
   "contributes": {
@@ -50,8 +51,30 @@
     "commands": [
       {
         "command": "claudeCodeAlerts.goto",
-        "title": "Go to Session",
+        "title": "Open Session",
         "category": "Claude Code Alerts"
+      },
+      {
+        "command": "claudeCodeAlerts.open",
+        "title": "Open Session",
+        "category": "Claude Code Alerts"
+      },
+      {
+        "command": "claudeCodeAlerts.openPad",
+        "title": "Open Pad",
+        "category": "Claude Code Alerts",
+        "icon": "$(notebook)"
+      },
+      {
+        "command": "claudeCodeAlerts.openSessionAndPad",
+        "title": "Open Session and Pad",
+        "category": "Claude Code Alerts"
+      },
+      {
+        "command": "claudeCodeAlerts.openOverview",
+        "title": "Open Prompt Pad (all sessions)",
+        "category": "Claude Code Alerts",
+        "icon": "$(home)"
       },
       {
         "command": "claudeCodeAlerts.settings",
@@ -151,6 +174,11 @@
     "menus": {
       "view/title": [
         {
+          "command": "claudeCodeAlerts.openOverview",
+          "when": "view == claudeCodeAlerts.sessions",
+          "group": "navigation@0"
+        },
+        {
           "command": "claudeCodeAlerts.newSessionTopLevel",
           "when": "view == claudeCodeAlerts.sessions",
           "group": "navigation@1"
@@ -162,6 +190,11 @@
         }
       ],
       "view/item/context": [
+        {
+          "command": "claudeCodeAlerts.openPad",
+          "when": "view == claudeCodeAlerts.sessions && viewItem =~ /^(session|folder)/",
+          "group": "inline@0"
+        },
         {
           "command": "claudeCodeAlerts.moveUp",
           "when": "view == claudeCodeAlerts.sessions && viewItem =~ /canUp/",
@@ -179,7 +212,7 @@
         },
         {
           "command": "claudeCodeAlerts.rename",
-          "when": "view == claudeCodeAlerts.sessions",
+          "when": "view == claudeCodeAlerts.sessions && viewItem =~ /^(session|folder)/",
           "group": "inline@4"
         },
         {
@@ -199,27 +232,37 @@
         },
         {
           "command": "claudeCodeAlerts.newSession",
-          "when": "view == claudeCodeAlerts.sessions",
+          "when": "view == claudeCodeAlerts.sessions && viewItem =~ /^(session|folder)/",
           "group": "1_new@1"
         },
         {
           "command": "claudeCodeAlerts.newFolder",
-          "when": "view == claudeCodeAlerts.sessions",
+          "when": "view == claudeCodeAlerts.sessions && viewItem =~ /^(session|folder)/",
           "group": "1_new@2"
         },
         {
           "command": "claudeCodeAlerts.goto",
           "when": "view == claudeCodeAlerts.sessions && viewItem =~ /^session/",
-          "group": "2_go"
+          "group": "2_go@1"
         },
         {
-          "submenu": "claudeCodeAlerts.setState",
+          "command": "claudeCodeAlerts.openSessionAndPad",
           "when": "view == claudeCodeAlerts.sessions && viewItem =~ /^session/",
           "group": "2_go@2"
         },
         {
+          "command": "claudeCodeAlerts.openPad",
+          "when": "view == claudeCodeAlerts.sessions && viewItem =~ /^(session|folder|prompt)/",
+          "group": "2_go@3"
+        },
+        {
+          "submenu": "claudeCodeAlerts.setState",
+          "when": "view == claudeCodeAlerts.sessions && viewItem =~ /^session/",
+          "group": "2_go@4"
+        },
+        {
           "command": "claudeCodeAlerts.moveTo",
-          "when": "view == claudeCodeAlerts.sessions",
+          "when": "view == claudeCodeAlerts.sessions && viewItem =~ /^(session|folder)/",
           "group": "3_move@1"
         },
         {
@@ -239,7 +282,7 @@
         },
         {
           "command": "claudeCodeAlerts.rename",
-          "when": "view == claudeCodeAlerts.sessions",
+          "when": "view == claudeCodeAlerts.sessions && viewItem =~ /^(session|folder)/",
           "group": "4_edit@1"
         },
         {
@@ -259,6 +302,18 @@
         }
       ],
       "commandPalette": [
+        {
+          "command": "claudeCodeAlerts.open",
+          "when": "false"
+        },
+        {
+          "command": "claudeCodeAlerts.openPad",
+          "when": "false"
+        },
+        {
+          "command": "claudeCodeAlerts.openSessionAndPad",
+          "when": "false"
+        },
         {
           "command": "claudeCodeAlerts.goto",
           "when": "false"
@@ -341,6 +396,12 @@
     },
     "keybindings": [
       {
+        "command": "claudeCodeAlerts.openPad",
+        "key": "ctrl+enter",
+        "mac": "cmd+enter",
+        "when": "focusedView == claudeCodeAlerts.sessions"
+      },
+      {
         "command": "claudeCodeAlerts.rename",
         "key": "f2",
         "when": "focusedView == claudeCodeAlerts.sessions"
@@ -411,6 +472,16 @@
           "light": "#1A66E0",
           "highContrast": "#4C8DFF",
           "highContrastLight": "#1A66E0"
+        }
+      },
+      {
+        "id": "claudeCodeAlerts.todo",
+        "description": "Claude Sessions view: a prompt waiting in a folder's prompt pad.",
+        "defaults": {
+          "dark": "#3FB6D8",
+          "light": "#0A7EA4",
+          "highContrast": "#3FB6D8",
+          "highContrastLight": "#0A7EA4"
         }
       }
     ],

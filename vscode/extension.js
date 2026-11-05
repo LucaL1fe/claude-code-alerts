@@ -1,7 +1,9 @@
 // Claude Code Alerts for VS Code.
 // Tells the Mac app which terminals this window has (by shell PID), focuses or renames a terminal when the app asks,
 // and shows every Claude session in a "Claude Sessions" view (with your own folders, like the Explorer) and the status bar.
+// The prompt pad (notes and a prompt queue per session and folder, in a tab of its own) is in ./pad.
 const vscode = require('vscode');
+const pad = require('./pad');
 const net = require('net');
 const fs = require('fs');
 const os = require('os');
@@ -91,9 +93,23 @@ function connect() {
   sock.on('error', () => {});
   sock.on('close', () => {
     sock = null;
+    pad.onDisconnect();
     clearTimeout(retry);
     retry = setTimeout(connect, 3000);
   });
+}
+
+// Types into a session's tab like you would. Esc first (only when asked) closes a menu Claude Code may show. Each line
+// goes on its own, in pieces if long, and lines are joined by Claude Code's own newline (a backslash, then Enter), so the
+// prompt arrives as typed text, not as a paste. Enter comes on its own at the end.
+async function typeInto(t, lines, { esc = false } = {}) {
+  if (esc) { t.sendText('\x1b', false); await sleep(500); }
+  for (let i = 0; i < lines.length; i++) {
+    for (let k = 0; k < lines[i].length; k += 200) { t.sendText(lines[i].slice(k, k + 200), false); await sleep(30); }
+    if (i < lines.length - 1) { await sleep(120); t.sendText('\\', false); await sleep(60); t.sendText('\r', false); await sleep(120); }
+  }
+  await sleep(700);
+  t.sendText('\r', false);
 }
 
 async function findTerminal(pid) {
@@ -112,16 +128,11 @@ async function onMessage(m) {
     const t = await findTerminal(m.shellPid);
     if (t) t.dispose();
   } else if (m.kind === 'typeText') {
-    // The usage limit has reset: the app has us type into the session's tab, like you would. Esc first closes a menu
-    // Claude Code may show, then the text, then Enter on its own (text and Enter in one go can count as a paste).
+    // The usage limit has reset: the app has us type into the session's tab, like you would.
     const t = await findTerminal(m.shellPid);
     if (out) out.info(`continue after the usage limit: ${t ? 'typing into' : 'no tab for'} shell ${m.shellPid}`);
     if (!t || !m.text) return;
-    t.sendText('\x1b', false);
-    await sleep(500);
-    t.sendText(m.text, false);
-    await sleep(700);
-    t.sendText('\r', false);
+    await typeInto(t, m.text.split('\n'), { esc: true });
   } else if (m.kind === 'sessions') {
     // The app sends them in order: most urgent first, newest session first within the same urgency.
     sessions = (m.sessions || []).slice();
@@ -141,6 +152,7 @@ async function onMessage(m) {
     decorations.refresh();
     updateStatus();
     syncViewSoon();
+    pad.onSessions(m);
     // A session started or ended somewhere: maybe in one of our tabs.
     const key = sessions.map((s) => s.id + ':' + s.shellPid).sort().join(',');
     if (key !== sessionsKey) { sessionsKey = key; saveSoon(); }
@@ -165,7 +177,7 @@ function ago(seconds) {
   return `${Math.floor(s / 86400)} d`;
 }
 
-// Tree elements are keys: "f:<folder id>" and "s:<session id>".
+// Tree elements are keys: "f:<folder id>", "s:<session id>" and "p:<prompt id>" (a prompt waiting in a folder's pad).
 const byName = (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
 // Folders: your order (Move Up / Move Down). Sessions: most urgent first, then the one you wrote to last (only writing
 // moves a session, so rows don't jump while you look around).
@@ -180,19 +192,37 @@ class SessionTree {
   }
   refresh() { this.emitter.fire(); }
   // On every level: the sessions, then the folders (or folders first, with "foldersPosition": "top").
+  // A folder's own prompts (from its pad) come first, with the same clock as everywhere.
   getChildren(key) {
-    if (key && key.startsWith('s:')) return [];
+    if (key && !key.startsWith('f:')) return [];
     const parent = key ? key.slice(2) : null;
     const dirs = folders.filter((f) => parentOf(f) === parent).sort(byOrder).map((f) => 'f:' + f.id);
     const list = sessions.filter((s) => folderOf(s) === parent).sort(byUrgency).map((s) => 's:' + s.id);
+    const prompts = parent ? pad.waitingIn('folder:' + parent).map((i) => 'p:' + i.id) : [];
     const onTop = vscode.workspace.getConfiguration('claudeCodeAlerts').get('foldersPosition') === 'top';
-    return onTop ? [...dirs, ...list] : [...list, ...dirs];
+    return [...prompts, ...(onTop ? [...dirs, ...list] : [...list, ...dirs])];
   }
   getParent(key) {
+    if (key.startsWith('p:')) {
+      const it = pad.item(key.slice(2));
+      const f = it && it.place.startsWith('folder:') ? it.place.slice(7) : null;
+      return f && folderById.has(f) ? 'f:' + f : undefined;
+    }
     const parent = key.startsWith('f:') ? parentOf(folderById.get(key.slice(2))) : folderOf(sessionById.get(key.slice(2)));
     return parent ? 'f:' + parent : undefined;
   }
   getTreeItem(key) {
+    if (key.startsWith('p:')) {
+      const it = pad.item(key.slice(2));
+      const text = it ? String(it.text || '') : '';
+      const item = new vscode.TreeItem(text.split('\n')[0] || 'Untitled prompt');
+      item.id = key;
+      item.contextValue = 'prompt';
+      item.iconPath = new vscode.ThemeIcon('clock', new vscode.ThemeColor('claudeCodeAlerts.todo'));
+      item.tooltip = text.slice(0, 400);
+      item.command = { command: 'claudeCodeAlerts.openPad', title: 'Open in the pad', arguments: [key] };
+      return item;
+    }
     if (key.startsWith('f:')) {
       const f = folderById.get(key.slice(2)) || { name: '' };
       const item = new vscode.TreeItem(f.name, vscode.TreeItemCollapsibleState.Expanded);
@@ -215,15 +245,19 @@ class SessionTree {
     // Words the menus test: tab (runs in a VS Code terminal tab, so Close Session can close it), nested.
     item.contextValue = ['session', closable(s) && 'tab', folderOf(s) && 'nested'].filter(Boolean).join(' ');
     item.resourceUri = keyUri(key);
-    item.description = `${LABEL[s.state] || s.state} · ${ago(s.updated)}${s.detail ? ' · ' + s.detail : ''}`;
+    // Prompts waiting in its pad: a count here (a row with children would open and close on a double click).
+    const waiting = pad.waitingIn('session:' + s.id);
+    const todo = waiting.length ? ` · ${waiting.length} todo` : '';
+    item.description = `${LABEL[s.state] || s.state} · ${ago(s.updated)}${todo}${s.detail ? ' · ' + s.detail : ''}`;
     // Colored dots are files, so a selected row keeps its state color (VS Code paints selected theme icons white).
     // Only the grey idle dot is a theme icon and turns white when you select it. Open in a tab: a ring around the dot.
     const open = openKeys.has(key);
     item.iconPath = (s.state === 'idle' && !open) || !extUri
       ? new vscode.ThemeIcon('circle-filled', new vscode.ThemeColor(COLOR.idle))
       : vscode.Uri.joinPath(extUri, 'media', `dot-${s.state}${open ? '-open' : ''}.svg`);
-    item.tooltip = `${s.name}\n${LABEL[s.state] || s.state}${open ? ' · open in a tab' : ''}\n${s.detail || ''}`;
-    item.command = { command: 'claudeCodeAlerts.goto', title: 'Go to session', arguments: [key] };
+    const next = waiting.slice(0, 5).map((i) => '○ ' + (String(i.text || '').split('\n')[0] || 'Untitled prompt')).join('\n');
+    item.tooltip = `${s.name}\n${LABEL[s.state] || s.state}${open ? ' · open in a tab' : ''}\n${s.detail || ''}${next ? '\n\nTodo:\n' + next : ''}`;
+    item.command = { command: 'claudeCodeAlerts.open', title: 'Open session', arguments: [key] };
     return item;
   }
 }
@@ -303,15 +337,22 @@ const dragAndDrop = {
     if (!item) return;
     const ids = JSON.parse(await item.asString());
     if (target && ids.includes(target)) return;
+    if (target && target.startsWith('p:')) target = tree.getParent(target);
+    // A prompt dropped on a session goes into that session's Todo; on a folder into the folder's; elsewhere the overview's.
+    const prompts = ids.filter((k) => k.startsWith('p:')).map((k) => k.slice(2));
+    if (prompts.length) pad.moveItems(prompts, !target ? 'root' : target.startsWith('s:') ? 'session:' + target.slice(2) : 'folder:' + target.slice(2));
+    const rest = ids.filter((k) => !k.startsWith('p:'));
+    if (!rest.length) return;
     const folder = !target ? null : target.startsWith('f:') ? target.slice(2) : folderOf(sessionById.get(target.slice(2)));
-    send({ kind: 'folder', event: 'move', ids, folder });
+    send({ kind: 'folder', event: 'move', ids: rest, folder });
   }
 };
 
-// Commands get the clicked row (context menu) or work on the selection (title bar, keys).
+// Commands get the clicked row (context menu) or work on the selection (title bar, keys). Prompt rows belong to the pad,
+// not the app: they are left out.
 function picked(key, keys) {
-  if (keys && keys.length) return keys;
-  return key ? [key] : treeView.selection;
+  const list = keys && keys.length ? keys : key ? [key] : treeView.selection;
+  return list.filter((k) => !k.startsWith('p:'));
 }
 
 // Where something new goes: into the folder you clicked it on (hover button, right-click), next to the session you
@@ -354,7 +395,7 @@ async function newSession(key) {
 
 async function rename(key) {
   key = key || treeView.selection[0];
-  if (!key) return;
+  if (!key || key.startsWith('p:')) return;
   const isFolder = key.startsWith('f:');
   const cur = isFolder ? folderById.get(key.slice(2)) : sessionById.get(key.slice(2));
   if (!cur) return;
@@ -443,6 +484,40 @@ async function gotoSession(s) {
   if (t) t.show(false);
   // Found here: the app only marks it seen. Elsewhere: the app brings that window up.
   send({ kind: 'goto', shellPid: s.shellPid, focused: !!t });
+}
+
+// A click on a session row opens the session. A second click on the same row right after (a double click) also opens
+// its pad, next to it. (Views get no double click and no modifier keys: two clicks on one row within 400 ms count.)
+let lastClick = { key: null, at: 0 };
+function openRow(key) {
+  const now = Date.now();
+  const double = lastClick.key === key && now - lastClick.at < 400;
+  lastClick = double ? { key: null, at: 0 } : { key, at: now };
+  if (double) pad.open(key, { preserveFocus: true });
+  else gotoSession(key);
+}
+
+// The pad on its own (the pad button on a row, ⌘Enter, right-click): for a session, a folder or a prompt row.
+function openPad(key) {
+  key = typeof key === 'string' ? key : treeView.selection[0];
+  pad.open(key || null);
+}
+
+function openSessionAndPad(key) {
+  key = typeof key === 'string' ? key : treeView.selection[0];
+  if (!key || !key.startsWith('s:')) return openPad(key);
+  gotoSession(key);
+  pad.open(key, { preserveFocus: true });
+}
+
+// Restore in the pad's Deleted: a session that is gone comes back in a new tab (claude --resume keeps its id, so its
+// folder and its notes and prompts come back with it).
+async function resumeSession(id) {
+  if (!/^[\w-]+$/.test(id)) return;
+  const t = claudeTerminal(workspacePath());
+  t.show(false);
+  await startClaude(t, id);
+  reportSoon();
 }
 
 // Development helper for demos and tests: opens an editor terminal running a command.
@@ -770,12 +845,18 @@ function activate(context) {
   treeView = vscode.window.createTreeView('claudeCodeAlerts.sessions', {
     treeDataProvider: tree, dragAndDropController: dragAndDrop, canSelectMany: true, showCollapseAll: true
   });
+  pad.init(context, { findTerminal, typeLines: typeInto, gotoSession: (id) => gotoSession('s:' + id), newSession, resumeSession, send, out });
+  pad.onChange(() => tree.refresh());
   context.subscriptions.push(
     out,
     status,
     treeView,
     vscode.window.registerFileDecorationProvider(decorations),
     vscode.commands.registerCommand('claudeCodeAlerts.goto', gotoSession),
+    vscode.commands.registerCommand('claudeCodeAlerts.open', openRow),
+    vscode.commands.registerCommand('claudeCodeAlerts.openPad', openPad),
+    vscode.commands.registerCommand('claudeCodeAlerts.openSessionAndPad', openSessionAndPad),
+    vscode.commands.registerCommand('claudeCodeAlerts.openOverview', () => pad.open(null)),
     vscode.commands.registerCommand('claudeCodeAlerts.newSession', newSession),
     vscode.commands.registerCommand('claudeCodeAlerts.newFolder', newFolder),
     // The title bar buttons: VS Code hands title actions the focused row, so these ignore it and mean the top level.

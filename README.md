@@ -78,6 +78,30 @@ yourself stay ended. Turn it off with `claudeCodeAlerts.restoreSessions`; what i
 
 <p align="center"><img src="docs/media/sessions.webp" alt="The Claude Sessions view in VS Code updates live; a click opens the session that needs permission" width="900"></p>
 
+### A prompt pad for every session
+
+Instead of a scratch markdown file next to your sessions, every session, every folder and the top level get a **pad**:
+notes, and a queue of prompts you write ahead of time. It opens in a tab next to the session.
+
+- **Open it:** double-click a session (the session and its pad), the pad button on a session or folder row (or ⌘Enter,
+  or right-click › Open Pad), or the house in the view's title bar for the overview of everything.
+- **A session's pad:** Notes · Doing · Todo · Done, or the same as a board. Write a prompt in place (a title in blue, then
+  what Claude should do). **Send now** types it into the session; while Claude still works it becomes **Send next** and
+  goes in as soon as the turn is over.
+- **Auto-send:** switch it on and the next prompt in Todo goes in by itself whenever Claude finishes (after a 3-second
+  countdown you can cancel), down to the "auto-send stops here" line you can drag. A prompt that didn't arrive, or a turn
+  that ended in an error, stops auto-send and stays on top of Todo with the reason.
+- **Paste pictures:** ⌘V puts `[Image #1]` where you are typing; the pictures sit in a closed "▸ 2 images" row below.
+  When the prompt is sent, each tag becomes the picture's path, so Claude opens it.
+- **Folders and the overview:** a folder's pad has its own notes and prompts (give one to a session with Assign to…, or
+  drag it onto the session) and every session in it, opened in place. The overview has general notes, a Backlog to give
+  away, the sessions without a folder, and every folder.
+- **Nothing gets lost:** drag anything anywhere (a sent prompt dragged out of Done is copied). A closed session or a
+  deleted folder leaves its notes and prompts in **Deleted** one level up: Restore it, Unpack them here, or Archive them.
+- Folder prompts are listed under their folder in the Claude Sessions view, and a session shows how many prompts wait.
+- Everything is plain files in `~/.claude-code-alerts/pad`: one small markdown file per note or prompt, readable by you
+  and by Claude. Uninstalling keeps it.
+
 ### Hit the usage limit? It continues by itself
 
 When a session stops at your 5-hour or weekly usage limit, it waits with a half-filled dot and the time it goes on
@@ -126,6 +150,7 @@ me". Claude does it, and the pill shows Claude's own words.
 | Away detection with one summary when you are back | Rename sessions right in the pill (✎) or by asking Claude |
 | Claude can ping you itself: `cca notify --needs-you "…"` | Works with the Claude Code CLI in any terminal; best in VS Code |
 | Sessions continue by themselves after a usage limit resets | Your usage limits in Claude Code's status line |
+| A prompt pad per session and folder: notes, a prompt queue | Send a prompt with one click, or the next one by itself |
 
 ## Install
 
